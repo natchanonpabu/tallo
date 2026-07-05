@@ -1,0 +1,10 @@
+# Go
+tallo_service/tallo_service
+tallo_service/api
+tallo_service/*.exe
+tallo_service/*.test
+
+# misc
+.DS_Store
+*.env
+.env.local
