@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# tallo_app
 
-## Getting Started
+Next.js (App Router) frontend for the tallo monthly money tracker. Client-rendered SPA that
+talks to the Go API in `../tallo_service`. Visual spec: `../docs/frontend-design.md`.
 
-First, run the development server:
+> **Note:** this repo pins a modified Next.js — read `AGENTS.md` and the bundled guides in
+> `node_modules/next/dist/docs/` before changing framework-level code.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Layout
+
+```
+app/
+  layout.tsx        IBM Plex Sans Thai (next/font), metadata
+  globals.css       palette tokens (cream/night, ink+fill tiers), radius, base type
+  page.tsx          the single screen: state + mutation runner
+components/          Dashboard, Expenses/Income panels, PeoplePanel, Split/Clone modals, MonthBar
+lib/
+  api.ts            typed client + types (mirror the Go DTOs)
+  format.ts         satang⇄baht format/parse (money only touched at the edge)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Config
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+One env var — the API base (baked into the client bundle at build time):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+NEXT_PUBLIC_API_BASE=http://localhost:8080/api      # dev
+NEXT_PUBLIC_API_BASE=https://<your-api>.run.app/api # prod
+```
 
-## Learn More
+Defaults to `http://localhost:8080/api` when unset.
 
-To learn more about Next.js, take a look at the following resources:
+## Run
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build (also typechecks)
+npm run start    # serve the production build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy (Vercel)
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Import the repo, set root directory to `tallo_app`, and set `NEXT_PUBLIC_API_BASE` to your
+deployed API. The Go API's `CORS_ORIGIN` must be set to the Vercel URL.

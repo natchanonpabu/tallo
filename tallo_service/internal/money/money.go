@@ -6,7 +6,7 @@ package money
 // of them). Each non-owner gets floor(custom/n); the owner absorbs the
 // remainder (plus their own nominal share, if included) so the numbers
 // reconcile exactly. Only nonOwnerShares are ever written as ledger entries.
-// See business.md §8.
+// See business.md #8.
 func SplitEven(custom int64, n int, ownerIncluded bool) (nonOwnerShares []int64, ownerShare int64) {
 	if n <= 0 {
 		return nil, custom

@@ -1,26 +1,106 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+  Palette + tokens from docs/frontend-design.md #3–#5. Two-tier accents: a pale
+  fill/wash for backgrounds and a deeper ink for text/figures (validated to clear
+  WCAG on both the surface and its own fill). Dark mode is a reinterpretation,
+  not a flip — warm charcoal with the same scoops stepped brighter.
+*/
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  /* neutrals — vanilla base (light) */
+  --bg: #fbf3ea;
+  --surface: #fffaf5;
+  --ink: #2b2622;
+  --ink-2: #6b6058;
+  --ink-muted: #9a8f84;
+  --border: rgba(43, 38, 34, 0.1);
+  --overlay: rgba(251, 243, 234, 0.55);
+
+  /* accents — ice-cream scoops (light): ink + fill */
+  --mint-ink: #137a51;
+  --mint-fill: #dff5ea;
+  --blueberry-ink: #345fb8;
+  --blueberry-fill: #e2ebfb;
+  --strawberry-ink: #b23a5b;
+  --strawberry-fill: #fbe4ea;
+  --grape-ink: #6a5acb;
+  --grape-fill: #ece8fb;
+  /* legible text ON a grape-ink fill (primary buttons): flips per theme so it
+     never becomes white-on-pastel in dark mode. */
+  --grape-on: #fffaf5;
+
+  /* shape */
+  --radius-card: 20px;
+  --radius-input: 12px;
+  --radius-pill: 999px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #0d0c0b;
+    --surface: #1c1a18;
+    --ink: #f7f2ea;
+    --ink-2: #c3bab0;
+    --ink-muted: #8b8178;
+    --border: rgba(247, 242, 234, 0.1);
+    --overlay: rgba(13, 12, 11, 0.55);
+
+    --mint-ink: #5fd6a3;
+    --mint-fill: #173a2e;
+    --blueberry-ink: #8fb3f3;
+    --blueberry-fill: #1e2b45;
+    --strawberry-ink: #f3a0b6;
+    --strawberry-fill: #42212b;
+    --grape-ink: #a99bf5;
+    --grape-fill: #2a2540;
+    /* dark cocoa ink on the pale-lavender fill (6.2:1) instead of white (2.4:1) */
+    --grape-on: #1c1a18;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-muted: var(--ink-muted);
+  --color-hairline: var(--border);
+
+  --color-mint-ink: var(--mint-ink);
+  --color-mint-fill: var(--mint-fill);
+  --color-blueberry-ink: var(--blueberry-ink);
+  --color-blueberry-fill: var(--blueberry-fill);
+  --color-strawberry-ink: var(--strawberry-ink);
+  --color-strawberry-fill: var(--strawberry-fill);
+  --color-grape-ink: var(--grape-ink);
+  --color-grape-fill: var(--grape-fill);
+  --color-grape-on: var(--grape-on);
+
+  --radius-card: var(--radius-card);
+  --radius-input: var(--radius-input);
+  --radius-pill: var(--radius-pill);
+
+  --font-sans: var(--font-plex-thai), "Noto Sans Thai", system-ui, sans-serif;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-plex-thai), "Noto Sans Thai", system-ui, sans-serif;
+  /* Thai vowel/tone marks need breathing room (frontend-design.md #4). */
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* tabular figures for vertically-stacked number lists (ledger rows, columns) */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* width-based truncation — never slice Thai by character count */
+.truncate-thai {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
