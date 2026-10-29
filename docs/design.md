@@ -448,7 +448,7 @@ where c.owner_id = m.owner_id
 src/
   lib/
     supabase.ts        client
-    database.types.ts  generated: supabase gen types typescript --local
+    database.types.ts  generated: pnpm gen:types (ต้องรันใหม่ทุกครั้งที่เพิ่ม migration)
     money.ts           toSatang / fromSatang / formatBaht
   features/
     months/   items/   splits/   people/   requests/   notifications/
@@ -467,7 +467,7 @@ src/
 3. ✅ **Migration 3** (`20261029150707_months_summary.sql`): `month_copy_candidates`, `create_month` (คัดลอก), `set_month_status`, `month_summaries`
 4. ✅ **Migration 4** (`20261029152223_payment_requests.sql`): payment_requests, request_lines, request_events, notifications + RPC ข้อ 6.2 + `month_open_requests` + Realtime + `balance_actual` นับยอดที่ได้รับจากคน
    - ข้อจำกัด: 1 คนต่อ 1 เดือนมีได้แค่ 1 ใบที่ยังไม่ถูกยกเลิก ถ้าได้รับเงินแล้วมียอดเพิ่มทีหลัง ต้องลงในเดือนถัดไป
-5. **Migration 5**: pg_cron เตือนวันครบกำหนด
+5. ✅ **Migration 5** (`20261029160000_due_reminders.sql`): `create_due_notifications` + pg_cron ทุกวัน 08:00 (Asia/Bangkok) ส่งแจ้งเตือน `due_soon` รายการละครั้งเดียว
 6. **Seed**: ข้อมูลเดือนตุลาคมจากชีต1 ใช้ทดสอบว่าได้ 35,368.52 / −4,686.48 (business ข้อ 13.1)
 
 แต่ละ migration มีเทสต์ SQL (pgTAP ผ่าน `supabase test db`) ครอบคลุมการปัดเศษของการแบ่ง, RLS ข้าม user และ state machine ของยอดเรียกเก็บ
