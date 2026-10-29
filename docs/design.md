@@ -307,19 +307,20 @@ create table request_events (
 create table notifications (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references profiles on delete cascade,
-  type        text not null,      -- request_received | request_updated | request_questioned
-                                  -- | request_paid | request_received_confirmed | due_soon
+  type        text not null,      -- request_received | request_updated | request_questioned | request_comment
+                                  -- | request_accepted | request_paid | request_received_confirmed
+                                  -- | request_cancelled | due_soon
+  actor_id    uuid references profiles on delete set null,   -- ใครทำให้เกิดแจ้งเตือนนี้
   request_id  uuid references payment_requests on delete cascade,
   item_id     uuid references items on delete cascade,
-  title       text not null,
-  body        text,
+  data        jsonb not null default '{}',   -- เช่น { "total": 414900, "version": 2 }
   read_at     timestamptz,
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default clock_timestamp()
 );
-create unique index one_due_notice on notifications (user_id, item_id) where type = 'due_soon';
 ```
 
-- แถวแจ้งเตือนถูกสร้างจาก RPC หรือ cron เท่านั้น (เป็น security definer) และ RPC เช็ก `notify_prefs` ก่อนสร้างทุกครั้ง
+- **ไม่เก็บข้อความ** ในตาราง UI สร้างข้อความจาก `type` + `data` + ชื่อของ `actor_id` เอง (เปลี่ยนคำหรือภาษาได้โดยไม่ต้องแก้ข้อมูลเก่า)
+- แถวแจ้งเตือนถูกสร้างผ่าน function `notify()` เท่านั้น ซึ่งเช็ก `notify_prefs` ก่อนทุกครั้ง (`{"request_received": false}` = ปิดประเภทนั้น) client แก้ได้แค่ `read_at`
 - Client subscribe ผ่าน Realtime: `postgres_changes` ที่ `notifications` filter `user_id=eq.<uid>` (RLS กันไม่ให้เห็นของคนอื่นอยู่แล้ว)
 - **เตือนวันครบกำหนด**: pg_cron รันทุกวัน 08:00 (Asia/Bangkok) โดยเลือก `items` ที่ `status = 'pending'` และ `due_date` อยู่ในช่วง `due_remind_days` แล้ว insert แบบ `on conflict do nothing`
 
@@ -386,17 +387,18 @@ where c.owner_id = m.owner_id
 | RPC | ผู้เรียก | หน้าที่ |
 |---|---|---|
 | `create_month(year, month, copy_from uuid, copy_item_ids uuid[])` | เจ้าของ | สร้างเดือน และคัดลอกรายการตาม 6.1 |
-| `set_month_status(month_id, status)` | เจ้าของ | เปิด, ปิด หรือเปิดใหม่ (Migration 4 จะเพิ่มการคืนยอดเรียกเก็บที่ยังค้าง เพื่อให้ UI เตือนก่อนปิด) |
+| `set_month_status(month_id, status)` | เจ้าของ | เปิด, ปิด หรือเปิดใหม่ |
+| `month_open_requests(month_id)` | เจ้าของ | ยอดเรียกเก็บของเดือนที่ยังไม่ `received` UI เรียกก่อนปิดเดือนเพื่อเตือน |
 | `month_copy_candidates(month_id)` | เจ้าของ | รายการที่คัดลอกได้ พร้อมค่า `suggested` สำหรับติ๊กไว้ก่อน |
 | `set_split(item_id, sub_item_id, mode, parts jsonb, include_me, my_weight, recurring)` | เจ้าของ | สร้างหรือแทนที่กฎ แล้วคำนวณ `shares` |
 | `apply_split(targets jsonb, …)` | เจ้าของ | แบ่งหลายรายการพร้อมกัน |
 | `clear_split(item_id, sub_item_id)` | เจ้าของ | ลบกฎ |
 | `link_contact(contact_id, friend_code)` | เจ้าของ | ผูกผู้ติดต่อกับ user |
 | `send_request(month_id, contact_id, note)` | ผู้ส่ง | ดู 6.2 |
-| `cancel_request(request_id)` | ผู้ส่ง | ยกเลิกได้ก่อนสถานะ `paid` |
+| `cancel_request(request_id)` | ผู้ส่ง | ยกเลิกได้ก่อนสถานะ `paid` และลบรายจ่ายที่สร้างไว้ฝั่งผู้รับ |
 | `comment_request(request_id, line_id, message, is_question bool)` | ทั้งสองฝ่าย | ถ้าเป็นคำถามจากผู้รับ สถานะเปลี่ยนเป็น `questioned` |
 | `accept_request(request_id)` | ผู้รับ | ดู 6.2 |
-| `mark_request_paid(request_id, paid_amount)` | ผู้รับ | สถานะเปลี่ยนเป็น `paid` และรายการฝั่งผู้รับเปลี่ยนเป็น `done` |
+| `mark_request_paid(request_id, paid_amount)` | ผู้รับ | ต้อง `accepted` ก่อน จากนั้นสถานะเปลี่ยนเป็น `paid` และรายการฝั่งผู้รับเปลี่ยนเป็น `done` |
 | `confirm_request_received(request_id)` | ผู้ส่ง | สถานะเปลี่ยนเป็น `received` |
 
 ### 6.1 คัดลอกเดือน (business ข้อ 5.2)
@@ -463,7 +465,8 @@ src/
 1. ✅ **Migration 1** (`20261021063616_core_schema.sql`): profiles, contacts, debt_accounts, months, items, sub_items + RLS + trigger ล็อกเดือน + `link_contact` + views `public_profiles`, `item_totals`
 2. ✅ **Migration 2** (`20261029150406_splits_offsets.sql`): split_rules, shares, offsets + `recompute_split` + `set_split` / `apply_split` + views
 3. ✅ **Migration 3** (`20261029150707_months_summary.sql`): `month_copy_candidates`, `create_month` (คัดลอก), `set_month_status`, `month_summaries`
-4. **Migration 4**: payment_requests, request_lines, request_events, notifications + RPC ข้อ 6.2 + Realtime
+4. ✅ **Migration 4** (`20261029152223_payment_requests.sql`): payment_requests, request_lines, request_events, notifications + RPC ข้อ 6.2 + `month_open_requests` + Realtime + `balance_actual` นับยอดที่ได้รับจากคน
+   - ข้อจำกัด: 1 คนต่อ 1 เดือนมีได้แค่ 1 ใบที่ยังไม่ถูกยกเลิก ถ้าได้รับเงินแล้วมียอดเพิ่มทีหลัง ต้องลงในเดือนถัดไป
 5. **Migration 5**: pg_cron เตือนวันครบกำหนด
 6. **Seed**: ข้อมูลเดือนตุลาคมจากชีต1 ใช้ทดสอบว่าได้ 35,368.52 / −4,686.48 (business ข้อ 13.1)
 

@@ -35,8 +35,15 @@ insert into public.items (id, owner_id, month_id, kind, debt_account_id, categor
   ('10000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
    'expense', null, 'pay_person', true, 'Chompoo', 100, null, null, null, null, 7);
 
--- Pretend item 7 came from an accepted payment request.
-update public.items set source_request_id = gen_random_uuid() where id = '10000000-0000-0000-0000-000000000007';
+-- Item 7 came from a payment request Ball sent to Frong.
+insert into public.months (id, owner_id, year, month) values
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222', 2026, 10);
+insert into public.contacts (id, owner_id, name, linked_user_id) values
+  ('c0000000-0000-0000-0000-0000000f4096', '22222222-2222-2222-2222-222222222222', 'Frong', '11111111-1111-1111-1111-111111111111');
+insert into public.payment_requests (id, sender_id, recipient_id, sender_month_id, sender_contact_id, year, month, status, version, total)
+values ('e0000000-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'c0000000-0000-0000-0000-0000000f4096', 2026, 10, 'accepted', 1, 100);
+update public.items set source_request_id = 'e0000000-0000-0000-0000-000000000001' where id = '10000000-0000-0000-0000-000000000007';
 
 -- As Frong ---------------------------------------------------------------------
 
@@ -129,7 +136,7 @@ select throws_ok($$ select public.create_month(2026::smallint, 11::smallint, 'aa
                  'P0002', 'month_not_found', 'Ball cannot copy Frong''s month');
 select throws_ok($$ select public.set_month_status('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'closed') $$,
                  'P0002', 'month_not_found', 'Ball cannot close Frong''s month');
-select is((select count(*) from public.month_summaries), 0::bigint, 'Ball sees no summaries of Frong''s');
+select is((select count(*) from public.month_summaries where month_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), 0::bigint, 'Ball sees no summaries of Frong''s');
 
 select * from finish();
 rollback;
