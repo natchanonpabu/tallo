@@ -1,45 +1,32 @@
-# tallo_app
+# React + TypeScript + Vite
 
-Next.js (App Router) frontend for the tallo monthly money tracker. Client-rendered SPA that
-talks to the Go API in `../tallo_service`. Visual spec: `../docs/frontend-design.md`.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-> **Note:** this repo pins a modified Next.js — read `AGENTS.md` and the bundled guides in
-> `node_modules/next/dist/docs/` before changing framework-level code.
+Currently, two official plugins are available:
 
-## Layout
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-```
-app/
-  layout.tsx        IBM Plex Sans Thai (next/font), metadata
-  globals.css       palette tokens (cream/night, ink+fill tiers), radius, base type
-  page.tsx          the single screen: state + mutation runner
-components/          Dashboard, Expenses/Income panels, PeoplePanel, Split/Clone modals, MonthBar
-lib/
-  api.ts            typed client + types (mirror the Go DTOs)
-  format.ts         satang⇄baht format/parse (money only touched at the edge)
-```
+## React Compiler
 
-## Config
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-One env var — the API base (baked into the client bundle at build time):
+## Expanding the Oxlint configuration
 
-```
-NEXT_PUBLIC_API_BASE=http://localhost:8080/api      # dev
-NEXT_PUBLIC_API_BASE=https://<your-api>.run.app/api # prod
-```
+If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
 
-Defaults to `http://localhost:8080/api` when unset.
-
-## Run
-
-```bash
-npm install
-npm run dev      # http://localhost:3000
-npm run build    # production build (also typechecks)
-npm run start    # serve the production build
+```json
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
 ```
 
-## Deploy (Vercel)
-
-Import the repo, set root directory to `tallo_app`, and set `NEXT_PUBLIC_API_BASE` to your
-deployed API. The Go API's `CORS_ORIGIN` must be set to the Vercel URL.
+See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.

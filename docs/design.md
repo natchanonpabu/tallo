@@ -1,510 +1,469 @@
-# design.md — Technical Design
+# Tallo — Technical Design (ร่างแรก)
 
-Implements the rules in `business.md`. If the two disagree, `business.md` wins for _what_
-the app does; this file owns _how_.
+> สถานะ: **Draft v0.1** · 2026-10-19
+> กฎธุรกิจอยู่ที่ [business.md](business.md) (ถ้าขัดกัน ให้ยึด business.md) · stack และหน้าตาอยู่ที่ [frontend.md](frontend.md)
 
 ---
 
-## 1. Architecture
+## 1. ภาพรวม
 
 ```
-┌─────────────┐      HTTPS/JSON      ┌──────────────┐      SQL       ┌──────────┐
-│  Frontend   │  ───────────────────▶│  Go API      │ ──────────────▶│ Postgres │
-│  Next.js    │◀───────────────────  │  (REST)      │◀────────────── │ (Neon)   │
-│  on Vercel  │                       │ Cloud Run/   │                └──────────┘
-└─────────────┘                       │ Render/Fly   │
-                                      └──────────────┘
+React (Vite) ──supabase-js──▶ Supabase
+                               ├─ Auth            (สมัคร/เข้าสู่ระบบ)
+                               ├─ Postgres + RLS  (ข้อมูลทั้งหมด, สิทธิ์บังคับที่ DB)
+                               ├─ RPC (plpgsql)   (logic ที่ข้าม user หรือต้อง atomic)
+                               ├─ Realtime        (แจ้งเตือนในแอป)
+                               ├─ pg_cron         (เตือนวันครบกำหนดรายวัน)
+                               └─ Storage         (สลิป/รูปบิล — ระยะถัดไป)
 ```
 
-- **Frontend** — Next.js (App Router) on Vercel.
-- **Backend** — a single Go service exposing a JSON REST API. All business logic
-  (split, clone, dashboard totals) lives here, never in the frontend.
-- **Database** — Postgres. Neon recommended: it auto-suspends compute and auto-resumes on
-  connect, which suits an app opened roughly once a month. Supabase also works but its free
-  tier _pauses_ projects after 7 days of inactivity and needs a manual wake — worse fit here.
-- **Backend hosting** — any Go-friendly host that scales to zero: Google Cloud Run
-  (recommended), Render, or Fly.io. Expect a cold start on the first request after idle.
+- **ไม่มี server ของเราเอง** frontend คุยกับ Supabase ตรง
+- **ข้อมูลของตัวเอง** (เดือน, รายการ, รายการย่อย, หักกลบ) เขียนผ่าน table ได้ตรง แล้ว RLS จำกัดให้เห็นแค่ของตัวเอง
+- **ทุกอย่างที่ข้าม user หรือมี state machine** (ส่งยอด, ยืนยัน, จ่ายแล้ว) และการคำนวณส่วนแบ่ง ทำผ่าน **RPC** เท่านั้น client ไม่มีสิทธิ์ update table เหล่านี้ตรง
+- Migration อยู่ที่ `supabase/migrations/` (root ของ repo) ใช้ Supabase CLI รัน local ด้วย Docker
 
-## 2. Money representation
+### Local development
 
-**All money is stored and transported as `int64` satang** (1 baht = 100 satang). No floats
-anywhere in the backend.
+ต้องมี Supabase CLI (`brew install supabase/tap/supabase`) และ Docker Desktop (`brew install --cask docker-desktop`) และต้องเปิด Docker Desktop ไว้ก่อนรัน `supabase start`
 
-- DB column type: `bigint`.
-- API: integers (e.g. `601000` means ฿6,010.00).
-- Frontend converts for display only (`value / 100`, format with 2 decimals, th-TH locale).
-- A small `money` package owns parsing, formatting, and the split rounding from
-  `business.md` #8. Division never happens ad hoc in handlers.
+```sh
+supabase start        # เปิด stack บนเครื่อง (Studio: http://127.0.0.1:54323)
+supabase db reset     # ล้างฐานข้อมูลแล้วรัน migration ทั้งหมดใหม่
+supabase test db      # รันเทสต์ pgTAP ใน supabase/tests/
+supabase stop
+```
 
-## 3. Database schema
+`tallo_app/.env.local` ชี้ไปที่ `http://127.0.0.1:54321` และใช้ publishable key ของเครื่อง (ดูได้จาก `supabase status`)
 
-Postgres 14+. `gen_random_uuid()` is built in (pgcrypto). Enums keep statuses honest.
+Error ที่ frontend ต้องจับ: `month_closed`, `cannot_link_self`, `friend_code_not_found`, `contact_not_found` (มาใน `error.message`)
 
-Enums keep statuses honest. People no longer carry a status — a person is a global running
-account (business.md D6); their balance is derived, and "settling" is an explicit event, not a
-flag.
+## 2. หลักการข้อมูล
 
-**Multi-user in v1 (business.md §13, D7).** Auth is now email + password (bcrypt) with a session
-cookie — no longer phase 2. Every user owns their own rows, so `months.user_id` and
-`people.user_id` become **NOT NULL** (backfilled and enforced by migration `0003_auth`, since
-existing rows predate multi-user). Linking (`people.linked_user_id`, `link_requests`) and the
-mirror/dispute columns (`counterpart_user_id`, `disputed`) arrive in `0004`/`0005`. Google OAuth
-and magic-link are left possible by this schema but are **not** built in v1.
+| หลักการ | รายละเอียด |
+|---|---|
+| **เงินเป็นสตางค์** | ทุกคอลัมน์เงินเป็น `bigint` หน่วยสตางค์ (26,938.48 บาท = `2693848`) ฝั่ง JS เป็น `number` integer ไม่ใช้ float คำนวณ |
+| **`null` ≠ 0** | ยอดที่ยังไม่กรอกเก็บเป็น `null` เพื่อให้สรุปเดือนแสดง "ยังไม่กรอก" ได้ (business ข้อ 13) |
+| **`owner_id` ทุก table** | denormalize ไว้ทุกแถวเพื่อให้ RLS เป็น `owner_id = auth.uid()` ตรง ๆ ไม่ต้อง join |
+| **เวลา** | `timestamptz` ทั้งหมด วันที่ครบกำหนดเป็น `date` คิดตามเขต `Asia/Bangkok` |
+| **ID** | `uuid` (`gen_random_uuid()`) |
+| **Snapshot ข้าม user** | ผู้รับยอดไม่เคยอ่าน table ของผู้ส่ง อ่านแค่ snapshot ใน `request_lines` (business ข้อ 11.1 ความเป็นส่วนตัว) |
+
+## 3. Schema
+
+### 3.1 แผนภาพ
+
+```
+profiles ─┬─< contacts >─── (linked_user_id → profiles)
+          ├─< debt_accounts
+          └─< months ─┬─< items ─┬─< sub_items
+                      │          └─< split_rules ─< shares >── contacts
+                      ├─< offsets >── contacts
+                      └─< payment_requests ─┬─< request_lines
+                                            └─< request_events
+profiles ─< notifications
+```
+
+### 3.2 Enums
 
 ```sql
-create type expense_status      as enum ('pending', 'paid');
-create type income_status       as enum ('pending', 'received');
-create type link_request_status as enum ('pending', 'accepted', 'declined');
+create type month_status   as enum ('draft', 'active', 'closed');
+create type item_kind      as enum ('card', 'loan', 'expense', 'income');
+create type expense_cat    as enum ('spending', 'subscription', 'savings', 'pay_person');
+create type pay_plan       as enum ('full', 'minimum', 'custom');
+create type item_status    as enum ('pending', 'done');   -- จ่ายแล้ว / ได้รับแล้ว
+create type split_mode     as enum ('equal', 'ratio', 'fixed');
+create type request_status as enum ('draft', 'sent', 'questioned', 'accepted', 'paid', 'received', 'cancelled');
+```
 
--- v1 auth: email + password (bcrypt). Google OAuth / magic-link are intentionally
--- NOT built now; the schema just leaves room to add them later (extra columns or an
--- auth-identities table) without breaking this one.
-create table users (
-  id            uuid primary key default gen_random_uuid(),
-  email         text not null unique,
-  password_hash text not null,                 -- bcrypt; never returned by the API
-  created_at    timestamptz not null default now()
+### 3.3 ผู้ใช้และผู้ติดต่อ
+
+```sql
+create table profiles (
+  id                uuid primary key references auth.users on delete cascade,
+  display_name      text not null,
+  color             text not null default '#B8A9F0',   -- สี pastel ประจำตัว
+  friend_code       text not null unique,               -- โค้ดสั้น ๆ ไว้ให้คนอื่นผูกผู้ติดต่อ
+  due_remind_days   smallint not null default 3,        -- เตือนก่อนครบกำหนดกี่วัน
+  notify_prefs      jsonb not null default '{}',        -- { "request_received": true, ... }
+  created_at        timestamptz not null default now()
 );
 
--- Server-side sessions keyed by an opaque cookie token. Alternative: a signed JWT in
--- an httpOnly cookie and no table at all — pick one; the REST contract (§5) is the same.
-create table sessions (
-  token      text primary key,                 -- opaque random; sent as an httpOnly cookie
-  user_id    uuid not null references users(id) on delete cascade,
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now()
+create table contacts (
+  id              uuid primary key default gen_random_uuid(),
+  owner_id        uuid not null references profiles on delete cascade,
+  name            text not null,                         -- ชื่อที่เราเรียก เช่น "P'Ball"
+  color           text not null,
+  linked_user_id  uuid references profiles on delete set null,
+  archived_at     timestamptz,
+  created_at      timestamptz not null default now(),
+  unique (owner_id, linked_user_id)
 );
+```
 
-create table months (
-  id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null references users(id) on delete cascade,  -- NOT NULL from 0003 (backfill first)
-  label      text not null,
-  created_at timestamptz not null default now()
-);
+- `profiles` สร้างอัตโนมัติด้วย trigger ตอนมีแถวใหม่ใน `auth.users` และสุ่ม `friend_code` ให้ 8 ตัว
+- การผูกผู้ติดต่อกับ user ทำผ่าน RPC `link_contact(contact_id, friend_code)` เพื่อไม่ให้ค้นหา user จากอีเมลได้
 
-create table expenses (
-  id         uuid primary key default gen_random_uuid(),
-  month_id   uuid not null references months(id) on delete cascade,
-  grp        text   not null default '',
-  name       text   not null default '',
-  amount     bigint not null default 0,   -- satang, reference only
-  minimum    bigint not null default 0,   -- satang, reference only
-  custom     bigint not null default 0,   -- satang, THE figure used in totals
-  status     expense_status not null default 'pending',
-  position   int    not null default 0,
-  created_at timestamptz not null default now()
-);
+### 3.4 บัตรและสินเชื่อ (ข้อมูลถาวร)
 
-create table incomes (
-  id         uuid primary key default gen_random_uuid(),
-  month_id   uuid not null references months(id) on delete cascade,
-  name       text   not null default '',
-  amount     bigint not null default 0,   -- satang
-  status     income_status not null default 'pending',
-  position   int    not null default 0,
-  created_at timestamptz not null default now()
-);
-
--- People are GLOBAL (no month_id): one record per real-world person, ledger runs
--- across all months (business.md D6).
-create table people (
-  id             uuid primary key default gen_random_uuid(),
-  user_id        uuid not null references users(id) on delete cascade,  -- NOT NULL from 0003 (backfill first)
-  name           text   not null default '',
-  linked_user_id uuid references users(id) on delete set null,  -- null = one-sided local label; set once an invite is accepted (0004)
-  position       int    not null default 0,
-  created_at     timestamptz not null default now()
-);
-
--- Charges: what a person owes. Signed satang, running balance only, NOT a cash event.
-create table ledger_entries (
+```sql
+create table debt_accounts (
   id                  uuid primary key default gen_random_uuid(),
-  person_id           uuid not null references people(id) on delete cascade,
-  label               text   not null default '',
-  amount              bigint not null,            -- + owner paid on their behalf, - they paid for owner
-  source_expense_id   uuid references expenses(id) on delete set null,  -- traceability only
-  counterpart_user_id uuid references users(id) on delete set null,     -- linked people: the mirrored copy lives on this user's side (0005)
-  disputed            boolean not null default false,                   -- true = parked out of net + month totals until resolved (0005)
+  owner_id            uuid not null references profiles on delete cascade,
+  kind                item_kind not null check (kind in ('card', 'loan')),
+  name                text not null,                    -- "KTC", "KBank loan"
+  provider            text,
+  color               text,
+  statement_day       smallint check (statement_day between 1 and 31),  -- บัตร
+  due_day             smallint check (due_day between 1 and 31),
+  installment_amount  bigint check (installment_amount > 0),            -- สินเชื่อ
+  total_installments  int check (total_installments > 0),               -- สินเชื่อ (null = ไม่ทราบ)
+  archived_at         timestamptz,
   created_at          timestamptz not null default now()
 );
+```
 
--- Settlements: money actually changing hands. A cash event in month_id; reduces the
--- running balance. Signed satang: + person paid the owner (received in month_id),
--- - owner paid the person (paid in month_id).
-create table settlements (
-  id                  uuid   primary key default gen_random_uuid(),
-  person_id           uuid   not null references people(id) on delete cascade,
-  month_id            uuid   not null references months(id) on delete cascade,
-  label               text   not null default '',
-  amount              bigint not null,
-  counterpart_user_id uuid references users(id) on delete set null,     -- linked mirror lives on this user's side (0005)
-  disputed            boolean not null default false,                   -- excluded from net + month totals until resolved (0005)
-  created_at          timestamptz not null default now()
+### 3.5 เดือนและรายการ
+
+```sql
+create table months (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null references profiles on delete cascade,
+  year        smallint not null,
+  month       smallint not null check (month between 1 and 12),
+  status      month_status not null default 'draft',
+  closed_at   timestamptz,
+  created_at  timestamptz not null default now(),
+  unique (owner_id, year, month)
 );
 
--- Invite + accept: linking a local person label to a real user. On accept the two accounts
--- link (people.linked_user_id set on both sides) and a reciprocal person is created on the
--- invitee's side (business.md §13, D7). Added in 0004.
-create table link_requests (
-  id             uuid primary key default gen_random_uuid(),
-  from_user_id   uuid not null references users(id) on delete cascade,   -- the inviter
-  from_person_id uuid not null references people(id) on delete cascade,  -- the local label being linked
-  to_email       text not null,                                          -- invited by email
-  to_user_id     uuid references users(id) on delete cascade,            -- resolved once the invitee has/accepts an account
-  status         link_request_status not null default 'pending',
-  created_at     timestamptz not null default now()
+create table items (
+  id                 uuid primary key default gen_random_uuid(),
+  owner_id           uuid not null references profiles on delete cascade,
+  month_id           uuid not null references months on delete cascade,
+  kind               item_kind not null,
+  debt_account_id    uuid references debt_accounts,
+  name               text not null,
+  category           expense_cat,                    -- ใช้กับ kind = 'expense'
+  recurring          boolean not null default false, -- ใช้ตอนคัดลอกเดือน
+  amount             bigint check (amount >= 0),     -- บัตร: ยอดเต็ม / อื่น ๆ: ยอดของรายการ (null = ยังไม่กรอก)
+  minimum_amount     bigint check (minimum_amount >= 0),  -- บัตรเท่านั้น
+  pay_plan           pay_plan,                            -- บัตรเท่านั้น
+  custom_amount      bigint check (custom_amount >= 0),   -- บัตร + pay_plan = 'custom'
+  installment_no     int,                                 -- สินเชื่อ: งวดที่เท่าไหร่
+  planned_amount     bigint generated always as (
+                       case
+                         when kind = 'card' and pay_plan = 'minimum' then minimum_amount
+                         when kind = 'card' and pay_plan = 'custom'  then custom_amount
+                         else amount
+                       end) stored,                         -- ยอดที่ใช้คำนวณ "คงเหลือ (แผน)"
+  due_date           date,
+  status             item_status not null default 'pending',
+  done_at            timestamptz,
+  paid_amount        bigint check (paid_amount >= 0),     -- ยอดจริงที่จ่าย/รับ (null = ใช้ planned_amount)
+  source_request_id  uuid,                                -- ถ้ามาจากการยืนยันยอดเรียกเก็บ (FK เพิ่มทีหลัง)
+  note               text,
+  position           int not null default 0,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+
+  check ((kind in ('card', 'loan')) = (debt_account_id is not null)),
+  check ((kind = 'expense') = (category is not null)),
+  check (kind = 'card' or (minimum_amount is null and pay_plan is null and custom_amount is null)),
+  check (kind = 'loan' or installment_no is null)
 );
 
-create index on months(user_id, created_at);
-create index on expenses(month_id);
-create index on incomes(month_id);
-create index on people(user_id, position);
-create index on people(linked_user_id);
-create index on ledger_entries(person_id);
-create index on ledger_entries(counterpart_user_id);
-create index on settlements(person_id);
-create index on settlements(month_id);
-create index on settlements(counterpart_user_id);
-create index on sessions(user_id);
-create index on link_requests(to_email);
-create index on link_requests(to_user_id);
-create index on link_requests(from_user_id);
+create table sub_items (
+  id           uuid primary key default gen_random_uuid(),
+  owner_id     uuid not null references profiles on delete cascade,
+  item_id      uuid not null references items on delete cascade,
+  name         text not null,
+  amount       bigint not null check (amount >= 0),
+  occurred_on  date,
+  note         text,
+  position     int not null default 0,
+  created_at   timestamptz not null default now()
+);
 ```
 
-**Derived, never stored:** a person's running `net` (= `Σ ledger_entries.amount −
-Σ settlements.amount`), the two People-section totals, and the five dashboard totals. Compute
-them on read.
+- **ยอดที่ยังไม่แจกแจง** = `items.amount − Σ sub_items.amount` คำนวณใน view `item_totals` ไม่เก็บซ้ำ ถ้าติดลบให้ UI เตือน (business ข้อ 7)
+- **ล็อกเดือนที่ปิดแล้ว**: trigger `guard_closed_month` บน `items`, `sub_items`, `split_rules`, `shares`, `offsets` ถ้า `months.status = 'closed'` จะ raise error ยกเว้น `status`/`done_at`/`paid_amount` ของ `items` ที่ยังแก้ได้ (เพื่อกด "จ่ายแล้ว" ย้อนหลัง ตาม business ข้อ 10)
 
-## 4. Computed values
+### 3.6 การแบ่งยอด
 
-All sums below are over the signed-in user's own rows, and **disputed items are excluded**
-(`disputed=false`) until they are resolved (business.md §13). Unlinked people never have disputed
-items, so their math is unchanged.
+```sql
+create table split_rules (
+  id           uuid primary key default gen_random_uuid(),
+  owner_id     uuid not null references profiles on delete cascade,
+  month_id     uuid not null references months on delete cascade,
+  item_id      uuid not null references items on delete cascade,
+  sub_item_id  uuid references sub_items on delete cascade,  -- null = ระดับรายการ
+  mode         split_mode not null,
+  include_me   boolean not null default true,                 -- equal/ratio: นับเราเป็น 1 ส่วนด้วยไหม
+  my_weight    numeric check (my_weight > 0),                 -- ratio + include_me
+  recurring    boolean not null default false,                -- คัดลอกไปเดือนหน้า
+  unique nulls not distinct (item_id, sub_item_id)
+);
 
-```
-# Per person (global, running across all months); disputed items excluded:
-person.net = Σ ledger_entries.amount − Σ settlements.amount   [disputed=false]
-
-# Per month M — people contribute ONLY via settlements dated to M (business.md D6):
-paid       = Σ expense.custom          [status=paid,     month=M]
-           + Σ |settlement.amount|      [amount<0,        month=M, disputed=false]  # owner paid a person
-toPay      = Σ expense.custom          [status=pending,  month=M]
-received   = Σ income.amount           [status=received, month=M]
-           + Σ settlement.amount        [amount>0,        month=M, disputed=false]  # a person paid the owner
-toReceive  = Σ income.amount           [status=pending,  month=M]
-cashNow    = received − paid           # net flow THIS MONTH (label: สุทธิเดือนนี้)
-
-# People section (global, not tied to any month):
-owedToYou  = Σ person.net              [net>0]
-youOwe     = Σ (−person.net)           [net<0]
-```
-
-**Disputed items are parked.** A `disputed=true` charge or settlement drops out of the confirmed
-`net` and out of every month total it would touch, on **both** linked sides, until it is resolved
-(business.md §13). Resolving flips `disputed` back to `false` and the item re-enters the sums.
-
-**Linked entries are per-viewer.** A charge/settlement on a linked person is stored once and
-mirrored to the counterpart; each side renders it with the **sign flipped** for its own point of
-view (business.md §13, D7). `net` on each side is still `Σ charges − Σ settlements`, and the two
-nets come out equal-and-opposite.
-
-Return the five month totals in the month payload and the two People totals in the people
-payload, so the frontend renders, never recomputes. Open person balances **never** appear in a
-month's toPay/toReceive — only settlements move money into a month.
-
-> **`cashNow` is a monthly flow, not cash-on-hand.** The JSON key stays `cashNow` (kept stable
-> — no schema/API change), but its user-facing label is **สุทธิเดือนนี้ (net this month)**. There
-> is no opening balance by design, so it is `received − paid` from zero every month, never your
-> real bank balance (business.md #1, #9, D3).
-
-## 5. REST API
-
-Base path `/api`. JSON in/out. Amounts are satang integers. There are **two aggregates**, and a
-write replaces whichever it changes:
-
-- **Month** — `{id,label,createdAt,expenses[],incomes[],settlements[],summary}`. Expense/income
-  writes return the month.
-- **People** — `{people:[{id,name,net,position,entries[]}],totals:{owedToYou,youOwe}}`. Person,
-  charge, and split writes return the people aggregate.
-- A **settlement** touches a month *and* a person, so it returns `{month, people}`.
-
-**Auth is required and everything is user-scoped (business.md §13).** Every `/api` route except
-`POST /api/auth/signup` and `POST /api/auth/login` requires a valid session cookie and only ever
-touches the signed-in user's own rows. A request for another user's month, person, entry, or
-settlement returns **404** (not 403 — don't reveal that the row exists).
-
-### Auth  (email + password; session cookie)
-
-| Method | Path               | Body                | Notes                                                    |
-| ------ | ------------------ | ------------------- | -------------------------------------------------------- |
-| POST   | `/api/auth/signup` | `{email, password}` | create account (bcrypt the password), start a session    |
-| POST   | `/api/auth/login`  | `{email, password}` | verify, set the httpOnly session cookie                  |
-| POST   | `/api/auth/logout` | —                   | clear the session                                        |
-| GET    | `/api/auth/me`     | —                   | `{id, email}` of the signed-in user, else 401            |
-
-Email + password only in v1. Google OAuth and magic-link are deliberately **not** built now; the
-schema (§3) leaves room to add them without breaking this contract.
-
-### Months
-
-| Method | Path                     | Body                                 | Notes                                                         |
-| ------ | ------------------------ | ------------------------------------ | ------------------------------------------------------------- |
-| GET    | `/api/months`            | —                                    | list `{id,label,createdAt}` newest first                      |
-| POST   | `/api/months`            | `{label}`                            | create empty month                                            |
-| GET    | `/api/months/{id}`       | —                                    | full month (see payload below)                                |
-| DELETE | `/api/months/{id}`       | —                                    | cascade-deletes everything in it                              |
-| POST   | `/api/months/{id}/clone` | `{label, expenseIds[], incomeIds[]}` | new cycle; carried items reset to pending; people are global (untouched) |
-
-### Expenses
-
-| Method | Path                        | Body                                                        |
-| ------ | --------------------------- | ----------------------------------------------------------- |
-| POST   | `/api/months/{id}/expenses` | `{group?,name?,amount?,minimum?,custom?}`                   |
-| PATCH  | `/api/expenses/{id}`        | any of `{group,name,amount,minimum,custom,status,position}` |
-| DELETE | `/api/expenses/{id}`        | —                                                           |
-| POST   | `/api/expenses/{id}/split`  | see below — returns the **people** aggregate                |
-
-### Incomes
-
-| Method | Path                       | Body                            |
-| ------ | -------------------------- | ------------------------------- |
-| POST   | `/api/months/{id}/incomes` | `{name?,amount?}`               |
-| PATCH  | `/api/incomes/{id}`        | `{name,amount,status,position}` |
-| DELETE | `/api/incomes/{id}`        | —                               |
-
-### People, charges, settlements  (global — **not** nested under a month)
-
-These return the **people aggregate**, except settlements, which return `{month, people}`.
-
-| Method | Path                           | Body                                        | Notes                               |
-| ------ | ------------------------------ | ------------------------------------------- | ----------------------------------- |
-| GET    | `/api/people`                  | —                                           | all people + running nets + totals  |
-| POST   | `/api/people`                  | `{name}`                                    | create a global person              |
-| PATCH  | `/api/people/{id}`             | `{name,position}`                           | no status field anymore             |
-| DELETE | `/api/people/{id}`             | —                                           | removes their charges + settlements |
-| POST   | `/api/people/{id}/entries`     | `{label?,amount}` (signed satang)           | add a **charge** (balance only)     |
-| PATCH  | `/api/entries/{id}`            | `{label,amount}`                            | edit a charge                       |
-| DELETE | `/api/entries/{id}`            | —                                           | delete a charge                     |
-| POST   | `/api/people/{id}/settlements` | `{monthId, amount, label?}` (signed satang) | cash event → `{month, people}`      |
-| DELETE | `/api/settlements/{id}`        | —                                           | undo → `{month, people}`            |
-
-Settlement `amount`: **positive** = the person paid the owner (→ `received` in `monthId`);
-**negative** = the owner paid the person (→ `paid` in `monthId`). Either way it reduces the
-running net toward zero.
-
-### Linking & disputes  (business.md §13)
-
-Linking a person to a real user is **invite + accept**; once linked, charges/settlements
-auto-mirror to the counterpart (per-viewer sign) and either side may dispute an item.
-
-| Method | Path                              | Body      | Notes                                                                    |
-| ------ | --------------------------------- | --------- | ------------------------------------------------------------------------ |
-| POST   | `/api/people/{id}/link-request`   | `{email}` | invite the real user behind this label; creates a pending request         |
-| GET    | `/api/link-requests`              | —         | requests I sent + requests addressed to me                               |
-| POST   | `/api/link-requests/{id}/accept`  | —         | link accounts; set `linked_user_id` both sides + create reciprocal person |
-| POST   | `/api/link-requests/{id}/decline` | —         | leave both sides untouched                                               |
-| POST   | `/api/entries/{id}/dispute`       | —         | flag a linked charge → excluded from net + month totals                  |
-| POST   | `/api/entries/{id}/resolve`       | —         | clear the dispute → charge re-enters the sums                            |
-| POST   | `/api/settlements/{id}/dispute`   | —         | flag a linked settlement → excluded from its month + net                 |
-| POST   | `/api/settlements/{id}/resolve`   | —         | clear the dispute                                                        |
-
-Accepting a request returns the **people** aggregate (both the now-linked person and the new
-reciprocal person appear). Dispute/resolve on an **entry** returns the people aggregate; on a
-**settlement** returns `{month, people}` (a settlement touches a month). A mirror action taken by
-one side is reflected on the other side's next read — the server owns both copies, and dispute is
-symmetric (either side can raise or resolve it).
-
-### GET month payload
-
-```json
-{
-  "id": "…",
-  "label": "มิ.ย. 69",
-  "createdAt": "…",
-  "expenses": [
-    {
-      "id": "…",
-      "group": "บัตร / สินเชื่อ",
-      "name": "KTC",
-      "amount": 0,
-      "minimum": 1272900,
-      "custom": 1272900,
-      "status": "pending",
-      "position": 0
-    }
-  ],
-  "incomes": [
-    {
-      "id": "…",
-      "name": "เงินเดือน",
-      "amount": 5335000,
-      "status": "received",
-      "position": 0
-    }
-  ],
-  "settlements": [
-    { "id": "…", "personId": "…", "personName": "Person B",
-      "label": "เคลียร์เต็ม", "amount": 891900 }
-  ],
-  "summary": {
-    "paid": 270000,
-    "toPay": 1542900,
-    "received": 6226900,
-    "toReceive": 601000,
-    "cashNow": 5956900
-  }
-}
+create table shares (
+  id            uuid primary key default gen_random_uuid(),
+  owner_id      uuid not null references profiles on delete cascade,
+  month_id      uuid not null references months on delete cascade,
+  rule_id       uuid not null references split_rules on delete cascade,
+  contact_id    uuid not null references contacts,
+  weight        numeric check (weight > 0),           -- ratio
+  fixed_amount  bigint check (fixed_amount >= 0),     -- fixed
+  amount        bigint not null check (amount >= 0),  -- ผลลัพธ์ที่คำนวณแล้ว (สตางค์)
+  unique (rule_id, contact_id)
+);
 ```
 
-The month payload no longer contains `people` — people are global (see below). `settlements`
-here are the ones dated to this month and are already folded into `summary` (the `+891900`
-settlement is inside `received`).
+**ยอดตั้งต้น (target) ของกฎ**
+- กฎระดับรายการย่อย ใช้ `sub_items.amount`
+- กฎระดับรายการ ใช้ **ยอดที่ยังไม่แจกแจง** (`items.amount − Σ sub_items.amount`) เพื่อไม่ให้นับซ้ำกับกฎของรายการย่อย ถ้ารายการไม่มีรายการย่อย target ก็คือ `items.amount`
+- คิดจาก `amount` (ยอดเต็ม) ไม่คิดจาก `planned_amount` (business ข้อ 15 #1)
 
-### GET people payload  (`GET /api/people`)
+**วิธีคำนวณ** (ทำใน function `recompute_split(rule_id)` เท่านั้น)
 
-```json
-{
-  "people": [
-    {
-      "id": "…",
-      "name": "Person B",
-      "net": 0,
-      "position": 0,
-      "entries": [
-        { "id": "…", "label": "KTC", "amount": 947900, "sourceExpenseId": "…" },
-        { "id": "…", "label": "Durian", "amount": -56000, "sourceExpenseId": null }
-      ]
-    }
-  ],
-  "totals": { "owedToYou": 0, "youOwe": 0 }
-}
+| mode | ส่วนของแต่ละคน | ส่วนของเรา |
+|---|---|---|
+| `equal` | `floor(target / N)` โดย N = จำนวนคน + (1 ถ้า `include_me`) | เศษที่เหลือ |
+| `ratio` | `floor(target × weight / Σweight)` (Σweight รวม `my_weight` ถ้า `include_me`) | เศษที่เหลือ |
+| `fixed` | `fixed_amount` | `target − Σfixed_amount` (ต้อง ≥ 0 ไม่อย่างนั้น raise error) |
+
+- "ส่วนของเรา" **ไม่เก็บเป็นแถว** แต่คำนวณเป็น target − Σshares ทำให้ผลรวมเท่ากับ target เสมอ และเศษตกเป็นของเราตามกฎ business ข้อ 8
+- "ของคนนี้ทั้งหมด" = `equal` กับ 1 คน และ `include_me = false`
+- **คำนวณใหม่อัตโนมัติ**: trigger บน `items.amount` และ `sub_items` (insert/update/delete) เรียก `recompute_split` ของกฎที่เกี่ยวข้อง ถ้า `fixed` เกิน target หลังแก้ยอด ให้ทำเป็น error ที่ UI จับไปเตือนได้
+- **แบ่งหลายรายการพร้อมกัน**: RPC `apply_split(targets jsonb, mode, include_me, parts jsonb)` วนสร้างกฎทีละ target ใน transaction เดียว
+  - หมายเหตุ: หารสองทีละรายการ ผลรวมอาจน้อยกว่าการหารยอดรวมใน Sheet ได้ไม่เกิน 1 สตางค์ต่อรายการ (เศษตกเป็นของเรา)
+
+### 3.7 หักกลบ
+
+```sql
+create table offsets (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null references profiles on delete cascade,
+  month_id    uuid not null references months on delete cascade,
+  contact_id  uuid not null references contacts,
+  name        text not null,                         -- "Dad Insurance"
+  amount      bigint not null check (amount > 0),    -- ยอดที่เราติดเขา
+  note        text,
+  position    int not null default 0,
+  created_at  timestamptz not null default now()
+);
 ```
 
-`net` is the running balance (Σ charges − Σ settlements) across all months, **excluding disputed
-items**; `entries` are the **charges** only. Here Person B's two charges sum to `891900`, and the
-`891900` settlement above brings the running net to `0`. A linked person also carries
-`linkedUserId`, and each charge/settlement carries `disputed` (bool) so the frontend can badge a
-linked person and mark a parked item — the amount is already left out of `net` while `disputed`.
+### 3.8 ยอดเรียกเก็บ
 
-### Split request
+```sql
+create table payment_requests (
+  id                 uuid primary key default gen_random_uuid(),
+  sender_id          uuid not null references profiles,
+  recipient_id       uuid not null references profiles,
+  sender_month_id    uuid not null references months on delete cascade,
+  sender_contact_id  uuid not null references contacts,
+  year               smallint not null,
+  month              smallint not null,
+  status             request_status not null default 'draft',
+  version            int not null default 0,          -- +1 ทุกครั้งที่ส่ง
+  total              bigint not null default 0,       -- ยอดสุทธิของ version ล่าสุด
+  recipient_item_id  uuid references items on delete set null,
+  sent_at            timestamptz,
+  accepted_at        timestamptz,
+  paid_at            timestamptz,
+  received_at        timestamptz,
+  created_at         timestamptz not null default now()
+);
+-- ยอดที่ยังไม่ถูกยกเลิกได้แค่ 1 ใบต่อคนต่อเดือน
+create unique index one_open_request on payment_requests (sender_month_id, sender_contact_id)
+  where status <> 'cancelled';
 
-```json
-POST /api/expenses/{id}/split
-// even
-{"mode":"even","includeMe":true,
- "participants":[{"name":"Person A"},{"name":"Person B"}]}
-// manual
-{"mode":"manual",
- "participants":[{"name":"Person A","amount":500000},{"name":"Person B","amount":300000}]}
+create table request_lines (
+  id          uuid primary key default gen_random_uuid(),
+  request_id  uuid not null references payment_requests on delete cascade,
+  version     int not null,
+  kind        text not null check (kind in ('share', 'offset')),
+  group_label text,                -- ชื่อรายการแม่ เช่น "KTC"
+  label       text not null,       -- ชื่อรายการย่อย หรือชื่อรายการ
+  amount      bigint not null,     -- share = บวก, offset = ลบ
+  position    int not null
+);
+
+create table request_events (
+  id          uuid primary key default gen_random_uuid(),
+  request_id  uuid not null references payment_requests on delete cascade,
+  actor_id    uuid not null references profiles,
+  type        text not null,       -- sent | resent | questioned | comment | accepted | paid | received | cancelled
+  line_id     uuid references request_lines on delete set null,   -- คอมเมนต์รายบรรทัด
+  message     text,
+  created_at  timestamptz not null default now()
+);
 ```
 
-Server behaviour: for each participant, **find-or-create a global person** with that name (not
-scoped to a month), then append a positive **charge** (`label` = expense name, `sourceExpenseId`
-= the expense). Even mode applies the #8 rounding; the owner is never given a charge. A split
-moves running balances only (no cash event), so it **returns the people aggregate**, not a month.
+`request_lines` เป็น **snapshot** ของแต่ละ version ไม่ผูกกลับไปที่ `shares` หรือ `offsets` ของผู้ส่ง เพื่อให้ผู้รับเห็นเฉพาะสิ่งที่ถูกส่งมา และยังเปรียบเทียบความต่างระหว่าง version ได้ (business ข้อ 11.2)
 
-## 6. Backend layout (Go)
+### 3.9 แจ้งเตือน
 
-Stack: `net/http` + `chi` router, `pgx/v5` driver, `sqlc` for typed queries, `goose` for
-migrations. Standard-library-first; no heavyweight framework.
-
-Rooted at `tallo_service/` in the repo:
-
-```
-cmd/api/main.go            wire config, db pool, router, start server
-internal/
-  config/config.go         env: DATABASE_URL, PORT, CORS_ORIGIN
-  money/money.go           satang type, format, SplitEven() rounding
-  store/                    sqlc-generated code + queries.sql sources
-  service/
-    month.go               get-with-summary (month aggregate), clone
-    split.go               split logic (find-or-create GLOBAL person, charges)
-    people.go              people aggregate, charges, settlements
-    summary.go             the five month totals + People-section totals
-    auth.go                signup/login (bcrypt), session issue/verify
-    linking.go             link-request invite/accept/decline, mirror, dispute/resolve
-  http/
-    router.go              routes + CORS + JSON middleware
-    auth.go                auth endpoints + session-cookie middleware (user_id in context)
-    months.go
-    expenses.go
-    incomes.go
-    people.go              people, charges, settlements (global, not under a month)
-    linking.go             link-request + dispute endpoints
-    errors.go              uniform error envelope {"error":{"code","message"}}
-migrations/                goose SQL migrations (0001_init.sql, 0002_people_global.sql,
-                           0003_auth.sql, 0004_linking.sql, 0005_mirror_dispute.sql, …)
-sql/queries/               sqlc input .sql files
-sqlc.yaml
-go.mod
+```sql
+create table notifications (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references profiles on delete cascade,
+  type        text not null,      -- request_received | request_updated | request_questioned
+                                  -- | request_paid | request_received_confirmed | due_soon
+  request_id  uuid references payment_requests on delete cascade,
+  item_id     uuid references items on delete cascade,
+  title       text not null,
+  body        text,
+  read_at     timestamptz,
+  created_at  timestamptz not null default now()
+);
+create unique index one_due_notice on notifications (user_id, item_id) where type = 'due_soon';
 ```
 
-Rules:
+- แถวแจ้งเตือนถูกสร้างจาก RPC หรือ cron เท่านั้น (เป็น security definer) และ RPC เช็ก `notify_prefs` ก่อนสร้างทุกครั้ง
+- Client subscribe ผ่าน Realtime: `postgres_changes` ที่ `notifications` filter `user_id=eq.<uid>` (RLS กันไม่ให้เห็นของคนอื่นอยู่แล้ว)
+- **เตือนวันครบกำหนด**: pg_cron รันทุกวัน 08:00 (Asia/Bangkok) โดยเลือก `items` ที่ `status = 'pending'` และ `due_date` อยู่ในช่วง `due_remind_days` แล้ว insert แบบ `on conflict do nothing`
 
-- Handlers parse/validate and call a service. **No SQL and no money math in handlers.**
-- `service` owns all business logic and transactions. Split, clone, and settle run in a single tx.
-- `money` owns every division/rounding. Nothing else divides satang.
-- People are **global** (no `month_id`); only settlements tie a person to a month's cash flow.
-- **Every service call is user-scoped:** the session middleware puts the `user_id` in context, and
-  handlers pass it down; queries always filter by it (business.md §13). Accept/mirror/dispute cross
-  the user boundary deliberately and run in a single tx that writes both linked sides.
-- **Migrations layer up in order.** `0001_init` (business.md #1–#12 schema), `0002_people_global`
-  (Model B — people go global; **not yet coded**), then this change: `0003_auth`
-  (`password_hash` + `sessions`, backfill and enforce `user_id` NOT NULL on months/people),
-  `0004_linking` (`people.linked_user_id`, `link_requests`), `0005_mirror_dispute`
-  (`counterpart_user_id` + `disputed` on `ledger_entries` and `settlements`). Never edit an
-  applied migration.
+## 4. Views
 
-## 7. Frontend notes
+```sql
+-- ยอดรวมต่อรายการ
+create view item_totals with (security_invoker = true) as
+select i.id as item_id,
+       coalesce(sum(s.amount), 0)                         as sub_total,
+       i.amount - coalesce(sum(s.amount), 0)              as unallocated
+from items i left join sub_items s on s.item_id = i.id
+group by i.id;
 
-- Screen structure: dashboard strip + two panels (Expenses | Income) for the current month,
-  plus a **global People section** (cross-month, shown alongside the months), the split modal,
-  the settle modal, and the new-cycle modal.
-- Replace `window.storage` with a thin `api.ts` client. Hold **two** states — the month and the
-  people aggregate — and on any mutation replace whichever the response carries (a settlement
-  carries both). The server recomputes `net`, `summary`, and the People totals.
-- Format money at the edge only: `฿${(satang/100).toLocaleString('th-TH',{minimumFractionDigits:2})}`.
-- The per-person ledger (Model A, now global — D6): each person is a card with charges
-  (add/edit/delete) and a live running net; the split modal writes charges into those cards, and
-  a **settle** action records a cash event into a chosen month.
-
-## 8. Config & deployment
-
-Backend env:
-
-```
-DATABASE_URL=postgres://…            # Neon connection string (use pooled URL)
-PORT=8080
-CORS_ORIGIN=https://your-app.vercel.app
+-- ยอดสุทธิต่อคนต่อเดือน (business ข้อ 9–10)
+create view month_person_balances with (security_invoker = true) as
+select m.id as month_id, c.id as contact_id,
+       coalesce(sh.total, 0)                              as receivable,
+       coalesce(o.total, 0)                               as offset_total,
+       coalesce(sh.total, 0) - coalesce(o.total, 0)       as net
+from months m
+cross join contacts c
+left join (select month_id, contact_id, sum(amount) total from shares  group by 1, 2) sh
+       on sh.month_id = m.id and sh.contact_id = c.id
+left join (select month_id, contact_id, sum(amount) total from offsets group by 1, 2) o
+       on o.month_id = m.id and o.contact_id = c.id
+where c.owner_id = m.owner_id
+  and (sh.total is not null or o.total is not null);
 ```
 
-Frontend env:
+`month_summaries` (business ข้อ 12–13) คำนวณต่อเดือน:
+
+| คอลัมน์ | สูตร |
+|---|---|
+| `income_own` | Σ `planned_amount` ของ `kind = 'income'` |
+| `from_people` | Σ `net` ที่ > 0 |
+| `to_people` | Σ `|net|` ที่ < 0 |
+| `expense_plan` | Σ `planned_amount` ของบัตร, สินเชื่อ, รายจ่าย |
+| `expense_if_full` / `expense_if_minimum` | เหมือน `expense_plan` แต่บังคับให้บัตรใช้ `amount` หรือ `minimum_amount` |
+| `balance_plan` / `balance_if_full` / `balance_if_minimum` | `income_own + from_people − expense_* − to_people` |
+| `balance_actual` | รายรับที่ `done` + ยอดเรียกเก็บที่ `received` − รายจ่ายที่ `done` (ใช้ `coalesce(paid_amount, planned_amount)`) |
+| `missing_count` | จำนวนบัตรที่ยอดตามแผนยังเป็น `null` → UI แสดง "⚠️ ยังไม่รวมบัตร" |
+| `savings_total` | Σ รายจ่าย `category = 'savings'` |
+| `done_count` / `total_count` | ความคืบหน้า (นับ items + ยอดเรียกเก็บของเดือน) |
+
+ทุก view ใช้ `security_invoker = true` เพื่อให้ RLS ของ table ต้นทางมีผลเหมือนเดิม
+
+## 5. RLS
+
+| Table | select | insert / update / delete |
+|---|---|---|
+| `profiles` | ตัวเอง และคนที่ผูกเป็นผู้ติดต่อกัน (ทางใดทางหนึ่ง) หรือมียอดเรียกเก็บระหว่างกัน | update ได้เฉพาะตัวเอง (ยกเว้น `friend_code`) |
+| `contacts`, `debt_accounts`, `months`, `items`, `sub_items`, `offsets` | `owner_id = auth.uid()` | `owner_id = auth.uid()` ยกเว้น 3 อย่างที่เปลี่ยนได้ผ่าน RPC เท่านั้น: `contacts.linked_user_id`, `months.status` และ `items.source_request_id` ส่วนเดือนที่ปิดแล้วลบไม่ได้ |
+| `split_rules`, `shares` | `owner_id = auth.uid()` | **RPC เท่านั้น** เพราะต้องคำนวณยอด |
+| `payment_requests`, `request_lines` | `auth.uid() in (sender_id, recipient_id)` แต่ผู้รับมองไม่เห็นใบที่สถานะ `draft` | **RPC เท่านั้น** |
+| `request_events` | เหมือน `payment_requests` | RPC เท่านั้น |
+| `notifications` | `user_id = auth.uid()` | update ได้แค่ `read_at` ของตัวเอง ส่วน insert ทำโดย RPC หรือ cron |
+
+- `profiles` ที่คนอื่นมองเห็นได้คือแค่ `display_name` กับ `color` ผ่าน view `public_profiles` ไม่เห็น `notify_prefs` หรือ `friend_code`
+- RPC ทุกตัวที่เป็น `security definer` ต้อง `set search_path = ''` และตรวจ `auth.uid()` เองทุกครั้ง
+
+## 6. RPC
+
+| RPC | ผู้เรียก | หน้าที่ |
+|---|---|---|
+| `create_month(year, month, copy_from uuid, copy_item_ids uuid[])` | เจ้าของ | สร้างเดือน และคัดลอกรายการตาม 6.1 |
+| `set_month_status(month_id, status)` | เจ้าของ | เปิด, ปิด หรือเปิดใหม่ คืนรายการยอดเรียกเก็บที่ยังค้างกลับมาเพื่อให้ UI เตือนก่อนปิด |
+| `set_split(item_id, sub_item_id, mode, include_me, my_weight, parts jsonb, recurring)` | เจ้าของ | สร้างหรือแทนที่กฎ แล้วคำนวณ `shares` |
+| `apply_split(targets jsonb, …)` | เจ้าของ | แบ่งหลายรายการพร้อมกัน |
+| `clear_split(item_id, sub_item_id)` | เจ้าของ | ลบกฎ |
+| `link_contact(contact_id, friend_code)` | เจ้าของ | ผูกผู้ติดต่อกับ user |
+| `send_request(month_id, contact_id, note)` | ผู้ส่ง | ดู 6.2 |
+| `cancel_request(request_id)` | ผู้ส่ง | ยกเลิกได้ก่อนสถานะ `paid` |
+| `comment_request(request_id, line_id, message, is_question bool)` | ทั้งสองฝ่าย | ถ้าเป็นคำถามจากผู้รับ สถานะเปลี่ยนเป็น `questioned` |
+| `accept_request(request_id)` | ผู้รับ | ดู 6.2 |
+| `mark_request_paid(request_id, paid_amount)` | ผู้รับ | สถานะเปลี่ยนเป็น `paid` และรายการฝั่งผู้รับเปลี่ยนเป็น `done` |
+| `confirm_request_received(request_id)` | ผู้ส่ง | สถานะเปลี่ยนเป็น `received` |
+
+### 6.1 คัดลอกเดือน (business ข้อ 5.2)
+
+ระบบเลือกรายการที่จะเสนอให้คัดลอกก่อน แล้วผู้ใช้ติ๊กเพิ่มหรือเอาออกได้ เสร็จแล้วส่งรายการที่เลือกมาทาง `copy_item_ids`
+
+| kind | ค่าที่คัดลอก | เงื่อนไขการเสนอ |
+|---|---|---|
+| `loan` | `amount = installment_amount`, `installment_no + 1`, `due_date` เลื่อน 1 เดือน | ไม่เสนอถ้า `installment_no = total_installments` (ผ่อนครบแล้ว) |
+| `card` | ชื่อ, บัญชี, `pay_plan`, `due_date` เลื่อน 1 เดือน, `amount`/`minimum_amount`/`custom_amount` เป็น `null` | เสนอทุกใบที่ยังไม่ archive |
+| `expense` / `income` | ชื่อ, หมวด, `amount` | เสนอเฉพาะ `recurring = true` |
+| `split_rules` | กฎและ shares ของรายการที่ถูกคัดลอก | เฉพาะ `recurring = true` และเป็นกฎระดับรายการ |
+| อื่น ๆ | `status = 'pending'`, ไม่คัดลอกรายการย่อย, หักกลบ และยอดเรียกเก็บ | |
+
+`items.source_request_id` (รายการที่มาจากการยืนยันยอด) **ไม่ถูกคัดลอก**
+
+### 6.2 วงจรยอดเรียกเก็บ (business ข้อ 11)
 
 ```
-NEXT_PUBLIC_API_BASE=https://your-api.run.app/api
+            send_request                accept_request          mark_request_paid
+  (none) ─────────────▶ sent ─────────────────────▶ accepted ───────────────────▶ paid
+                         │  ▲                         │                             │
+     comment(question)   ▼  │ send_request (resend)   │ send_request (resend)       │ confirm_request_received
+                     questioned ◀─────────────────────┘                             ▼
+                                                                                received
+  cancel_request: จาก sent / questioned / accepted → cancelled
 ```
 
-- CORS: allow only the Vercel origin; allow `GET,POST,PATCH,DELETE` + `Content-Type`.
-- Neon: use the **pooled** connection string; set a small `pgxpool` max (e.g. 4) to stay
-  friendly with serverless.
-- Cloud Run: min instances 0 (accept cold starts), container from a small Go build.
+**`send_request`**
+1. ตรวจว่าผู้ติดต่อผูกกับ user แล้ว และ `net > 0`
+   - ถ้า `net ≤ 0` ส่งไม่ได้ เพราะเราเป็นฝ่ายที่ต้องจ่าย ให้อีกฝ่ายเป็นคนส่งยอดมา
+2. ถ้ายังไม่มียอดเรียกเก็บของคนนี้ในเดือนนี้ ให้สร้างใหม่ ถ้ามีอยู่แล้วและสถานะยังไม่ถึง `paid` ให้ใช้ใบเดิม (= ส่งใหม่)
+3. `version + 1` แล้ว snapshot ส่วนแบ่ง (`kind = 'share'`) และการหักกลบ (`kind = 'offset'`) ของคนนี้ลงใน `request_lines` จากนั้นตั้ง `total`
+4. สถานะเปลี่ยนเป็น `sent` บันทึก event `sent` หรือ `resent` แล้ว notify ผู้รับ (`request_received` หรือ `request_updated`)
 
-## 9. Testing
+**`accept_request`**
+1. หาเดือน `(year, month)` ของผู้รับ ถ้ายังไม่มีให้สร้างเป็น `draft`
+2. หาผู้ติดต่อฝั่งผู้รับที่ `linked_user_id = sender_id` ถ้ายังไม่มีให้สร้างใหม่จากชื่อของผู้ส่ง
+3. ถ้ายังไม่มี `recipient_item_id` ให้สร้าง `items` ใหม่ (`kind = 'expense'`, `category = 'pay_person'`, `name = <ชื่อผู้ส่ง>`, `amount = total`, `source_request_id`) ถ้ามีแล้ว (เป็นการยืนยันรอบใหม่หลังผู้ส่งแก้ยอด) ให้อัปเดต `amount`
+4. สถานะเปลี่ยนเป็น `accepted` แล้ว notify ผู้ส่ง
 
-- `money` package: unit tests for formatting and split rounding (esp. remainders, e.g.
-  `custom=100`, `N=3` → shares `33,33,34`-equivalent with owner absorbing the remainder).
-- `service`: table-driven tests for the five month totals — that open person balances do **not**
-  appear, and that settlements land in `paid`/`received` of their month (both directions); that
-  a person's running net = `Σ charges − Σ settlements` across months; and clone (status reset,
-  people untouched).
-- One HTTP smoke test per resource (create → read → patch → delete), plus the cross-cutting
-  flow: split (charge) → settle (cash event moves a month + zeroes the tab).
+**ยอดเปลี่ยนหลังส่ง**: UI เทียบ `net` ปัจจุบันกับ `total` ถ้าไม่เท่ากันให้แสดง badge "ยอดเปลี่ยน — ส่งใหม่" ระบบไม่ส่งใหม่ให้อัตโนมัติ
 
-## 10. Later (not in v1)
+## 7. Frontend data access
 
-Rate limiting and optional export back to CSV.
+```
+src/
+  lib/
+    supabase.ts        client
+    database.types.ts  generated: supabase gen types typescript --local
+    money.ts           toSatang / fromSatang / formatBaht
+  features/
+    months/   items/   splits/   people/   requests/   notifications/
+      api.ts           wrapper ของ query และ RPC ใน feature นั้น
+      components/
+```
 
-**Auth is no longer here — it moved into v1.** Owner login and `user_id` enforcement (email +
-password + session cookie, every query scoped by user) are part of this version; see §3, §4, §5,
-and business.md §13/D7. Google OAuth and magic-link sign-in are deliberately left possible by the
-schema (§3) but are **not** built now — v1 is email + password only, so those remain future work.
+- ใช้ `supabase.from(...)` กับ table ของตัวเอง และ `supabase.rpc(...)` กับทุกอย่างในข้อ 6
+- ยังไม่ใส่ lib จัดการ cache (เช่น TanStack Query) ใน MVP ใช้ hook ของแต่ละ feature (`useMonth(id)` เป็นต้น) ที่ refetch หลัง mutation ถ้าเริ่มซับซ้อนค่อยพิจารณาใหม่
+- Realtime ใช้แค่ `notifications` และ `payment_requests` (อัปเดตสถานะสด ๆ)
+
+## 8. ลำดับการทำ
+
+1. ✅ **Migration 1** (`20261021063616_core_schema.sql`): profiles, contacts, debt_accounts, months, items, sub_items + RLS + trigger ล็อกเดือน + `link_contact` + views `public_profiles`, `item_totals`
+2. **Migration 2**: split_rules, shares, offsets + `recompute_split` + `set_split` / `apply_split` + views
+3. **Migration 3**: `create_month` (คัดลอก) + `month_summaries`
+4. **Migration 4**: payment_requests, request_lines, request_events, notifications + RPC ข้อ 6.2 + Realtime
+5. **Migration 5**: pg_cron เตือนวันครบกำหนด
+6. **Seed**: ข้อมูลเดือนตุลาคมจากชีต1 ใช้ทดสอบว่าได้ 35,368.52 / −4,686.48 (business ข้อ 13.1)
+
+แต่ละ migration มีเทสต์ SQL (pgTAP ผ่าน `supabase test db`) ครอบคลุมการปัดเศษของการแบ่ง, RLS ข้าม user และ state machine ของยอดเรียกเก็บ

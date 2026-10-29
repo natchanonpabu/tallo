@@ -1,265 +1,287 @@
-# business.md — Monthly Money Tracker
+# Tallo — Business Requirements (ร่างแรก)
 
-Domain rules only. No tech. If a rule here conflicts with the code, this file wins —
-fix the code. For schema, API, and stack see `design.md`.
+> สถานะ: **Draft v0.2** · 2026-10-19
+> เอกสารนี้อธิบาย "ระบบต้องทำอะไร และกฎทางธุรกิจคืออะไร" เท่านั้น
+> เรื่องเทคนิคและหน้าตาแอปอยู่ที่ [frontend.md](frontend.md)
 
 ---
 
-## 1. What this app is
+## 1. ที่มา
 
-A per-month money tracker that replaces a Google Sheets workflow. Each month the owner
-records what they have to **pay** and what they will **receive**, marks each item as it
-actually happens, and sees the **net money that moved this month** — what came in minus what
-went out.
+ตอนนี้ใช้ Google Sheet "Expenses tracking" ทำรายเดือน โดยแยก 1 แท็บต่อ 1 เดือน ใช้งานได้ แต่มีปัญหาตามนี้
 
-It is **not** a running-balance accounting system and **not** a mirror of your bank balance.
-Each month starts from zero: the app tracks *this month's flow and settlements*, never the
-cash you were already holding. Your real balance lives in your bank — read it there.
+| ปัญหาใน Sheet | ตัวอย่างจริง |
+|---|---|
+| ข้อมูลเดียวกันต้องกรอกซ้ำหลายที่ | KBank loan 5,010 อยู่ทั้งใน "Frong card" และ "P'Ball" |
+| ยอดรวมของแต่ละรายการบอกไม่ได้ว่ามาจากอะไร | KTC 12,374 ต้องเปิดบิลดูถึงจะรู้ว่าเป็นของ P'Ball 8,050 |
+| การหารต้องทำเป็นคอลัมน์แยก | ต้องมีคอลัมน์ "Chompoo / 2" แล้วใช้สูตรหารสอง |
+| การหักกลบไม่มีที่ทางชัดเจน | Dad Insurance กับ Fortuner ต้องใส่เป็นแถวติดลบไว้ท้ายคอลัมน์ |
+| บอกไม่ได้ว่ารายการไหนจัดการไปแล้ว | ใช้สีพื้นแทนสถานะ ซึ่งจำได้แค่เจ้าของชีต |
+| ส่งยอดให้คนอื่นต้องแคปจอหรือพิมพ์ส่งเอง | ยอดของชมภู่ต้องรอชมภู่คำนวณแล้วบอกมา |
+| คอลัมน์ Amount / Minimum / Custom ใช้ไม่ครบ | ช่องว่างถูกนับเป็น 0 ทำให้ Balance ดูดีเกินจริง |
 
-## 2. Core principles (non-negotiable)
+## 2. เป้าหมาย
 
-- **A month is a closed box.** No balance is carried from the previous month. Opening a
-  new month may *copy the list of items* forward, but never any amounts of "leftover cash".
-- **Record once per month.** The owner opens the month, fills it in, and checks things off
-  through the month. There is no daily ledger.
-- **`custom` is the source of truth for money math.** Every expense carries three numbers —
-  `amount`, `minimum`, `custom`. `amount` and `minimum` are *reference only* (they help the
-  owner decide what to pay). Only `custom` is used in any total.
-- **Cash moves only when the owner records it.** An expense affects cash when marked `paid`;
-  income when marked `received`; a person's balance when a **settlement** is recorded. An
-  unchecked item — or an unsettled person balance — is a plan/IOU, not this month's cash.
+1. **ใช้ง่ายกว่า Sheet**: เปิดเดือนใหม่ได้ในไม่กี่คลิก และรายการที่ใช้ประจำตามมาเอง
+2. **ดูรายละเอียดได้ในแอป**: แต่ละรายการแตกเป็นรายการย่อยได้ ไม่ต้องกลับไปเปิดบิล
+3. **แบ่งยอดได้ยืดหยุ่น**: หารเท่า หารตามสัดส่วน หรือกำหนดยอดเอง
+4. **ส่งยอดหากันได้**: ส่งยอดให้อีกคน และอีกฝั่งได้รับแจ้งเตือนพร้อมรายละเอียด
+5. **รู้ว่าเหลืออะไรต้องทำ**: เห็นทันทีว่าจัดการไปกี่รายการแล้ว และยังค้างจ่ายหรือค้างรับเท่าไหร่
 
-## 3. Glossary
+### นอกขอบเขต (ยังไม่ทำ)
 
-- **Owner / "Me"** — the single person the whole sheet belongs to. All money is from their
-  point of view.
-- **Person** — someone the owner fronts money for or splits bills with (e.g. Person A, Person B,
-  Person C). A person is **global**, not tied to a month: one real-world person is one record
-  whose ledger runs across every month (D6).
-- **Custom** — the actual amount the owner decides to pay this month for an expense.
-- **Net** — the signed **running** balance of a person's ledger (charges minus what's been
-  settled), across all months. Positive = they owe the owner; negative = the owner owes them;
-  zero = square.
-- **Charge** — a ledger entry that changes what a person owes (e.g. a split share). Moves the
-  running balance only; **not** a cash event, touches no month's dashboard.
-- **Settlement** — the moment money actually changes hands to square up (all or part of) a
-  balance. Belongs to the month it happens in and **is** a cash event there (D6).
+- ดึงข้อมูลจากธนาคารหรือบัตรอัตโนมัติ
+- โอนเงินหรือรับชำระเงินผ่านแอป (แอปทำหน้าที่ **บันทึก** เท่านั้น)
+- บัญชีบริษัท ภาษี หรือรายงานเชิงบัญชี
 
-## 4. The three buckets
+## 3. ผู้ใช้
 
-The app tracks three kinds of things, kept separate. The first two are **per-month**; the third
-is **global** and spans months:
+| ผู้ใช้ | บทบาทในชีตเดิม |
+|---|---|
+| **Frong** | เจ้าของชีต: ถือบัตรและสินเชื่อหลายใบ และรวบรวมยอดทั้งหมด |
+| **Chompoo** | หารค่าใช้จ่ายร่วมกัน และส่งยอดที่ Frong ต้องจ่ายมาให้ทุกเดือน |
+| **P'Ball** | ใช้บัตรหรือสินเชื่อในชื่อ Frong แล้วจ่ายคืนให้ บางครั้งจ่ายแทน Frong ด้วย |
+| **P'Nok** | มีโครงไว้ แต่เดือนนี้ยังไม่มียอด |
 
-1. **Expenses** (per month) — money going out that is *the owner's own* (cards, loans, bills,
-   food).
-2. **Incomes** (per month) — money coming in that is *directly the owner's* (salary, etc.). This
-   bucket does **not** include money people pay back — that lives in bucket 3.
-3. **People (per-person ledgers)** (global, cross-month) — one running sub-account per person,
-   living **outside** the monthly boxes (#3, D6). Where "I paid for someone" and "they paid for
-   me" accumulate as a running tab. A person's open balance shows in its own People section and
-   does **not** fold into any month's four tiles; only a **settlement** — cash actually changing
-   hands (§7) — lands in the flow of the month it happens in.
+ทุกคน **เป็น user ของระบบได้เท่ากัน** และแต่ละคนมีเดือนและรายการของตัวเอง
+"Frong เป็นเจ้าของ" จึงเป็นแค่มุมมองของ Frong ในข้อมูลของ Frong เอง
 
-## 5. Expenses
+**ผู้ติดต่อ (Contact)** คือคนที่เราแบ่งยอดหรือส่งยอดด้วย แบ่งได้ 2 แบบ:
+- **ผูกกับ user**: ส่งยอดผ่านแอปได้ และอีกฝั่งได้รับแจ้งเตือน
+- **ยังไม่ผูก**: บันทึกยอดได้ตามปกติ แต่ต้องแจ้งเขาเองนอกแอป (หรือใช้ลิงก์แชร์ ดูข้อ 13)
 
-Fields: `group`, `name`, `amount`, `minimum`, `custom`, `status`.
+## 4. คำศัพท์
 
-- `group` is a free label used only to cluster rows visually (e.g. "บัตร / สินเชื่อ",
-  "รายจ่ายอื่น"). It has no effect on math.
-- `status` ∈ { `pending` (รอจ่าย), `paid` (จ่ายแล้ว) }.
-- Only `custom` is summed. `amount` / `minimum` are reference values shown to the owner.
+| คำ | ความหมาย |
+|---|---|
+| **เดือน (Month)** | กล่องข้อมูลของ 1 รอบเดือน แทนที่ 1 แท็บใน Sheet |
+| **บัญชีหนี้ (Debt account)** | บัตรเครดิตหรือสินเชื่อ 1 ใบ เป็นข้อมูลถาวรที่ใช้ข้ามเดือน |
+| **รายการ (Item)** | รายรับหรือรายจ่าย 1 บรรทัดในเดือน |
+| **รายการย่อย (Sub-item)** | รายละเอียดในรายการ เช่น ธุรกรรมในบิลบัตร |
+| **ส่วนแบ่ง (Share)** | ยอดส่วนหนึ่งของรายการหรือรายการย่อยที่เป็นของคนอื่น |
+| **ยอดเรียกเก็บ (Request)** | ชุดของส่วนแบ่งที่เราส่งให้อีกคนจ่าย |
+| **หักกลบ (Offset)** | ยอดที่เราติดเขา นำไปหักออกจากยอดที่เขาติดเรา |
+| **แผนการจ่าย (Pay plan)** | ตัวเลือกว่าจะจ่ายบัตรใบนั้นเต็ม จ่ายขั้นต่ำ หรือกำหนดยอดเอง |
 
-## 6. Incomes (direct)
+## 5. การจัดการเดือน
 
-Fields: `name`, `amount`, `status`.
+### 5.1 หน้ารายการเดือน
+- แสดงทุกเดือนเรียงจากใหม่ไปเก่า แต่ละเดือนมีสรุปสั้น ๆ: รายรับ, รายจ่าย, คงเหลือ และความคืบหน้า (เช่น 12/18 รายการ)
+- สถานะของเดือนมี 3 แบบ: **ร่าง** → **กำลังดำเนินการ** → **ปิดแล้ว**
+- เดือนที่ปิดแล้วจะถูกล็อก ถ้าจะแก้ต้องกด "เปิดใหม่" ก่อน เพื่อกันการแก้ย้อนหลังโดยไม่ตั้งใจ
 
-- `status` ∈ { `pending` (รอรับ), `received` (รับแล้ว) }.
-- Use for salary and any money that arrives without a per-person split.
+### 5.2 สร้างเดือนใหม่
+มี 2 วิธี:
+1. **เริ่มว่าง**
+2. **คัดลอกจากเดือนก่อน** (เป็นค่าเริ่มต้น) โดยแต่ละประเภทข้อมูลถูกคัดลอกต่างกันดังนี้
 
-## 7. People and the per-person ledger  ← the heart of the model
+| ประเภท | สิ่งที่ถูกคัดลอก |
+|---|---|
+| สินเชื่อ | ยอดผ่อนต่องวด และหักงวดคงเหลือลง 1 อัตโนมัติ |
+| บัตรเครดิต | ชื่อบัตรและวันครบกำหนด โดย **ล้างยอดบิลเป็นว่าง** เพราะบิลเปลี่ยนทุกเดือน |
+| รายจ่ายประจำ | ชื่อและยอด ใช้กับรายการที่ติ๊ก "ประจำ" ไว้ เช่น Internet, SSO, Youtube |
+| รายรับประจำ | ชื่อและยอด เช่น Salary |
+| ส่วนแบ่งแบบประจำ | สัดส่วนการแบ่ง เช่น Youtube ที่ P'Ball จ่าย 132 จาก 198 |
+| สถานะ, รายการย่อย, ยอดเรียกเก็บ | **ไม่คัดลอก** |
 
-A person is a **global running account** (#3, D6), not reset per month. Their ledger holds two
-kinds of records: **charges** (what they owe) and **settlements** (money actually moving).
+- ตอนคัดลอก ผู้ใช้เลือกได้ว่าจะเอารายการไหนไปด้วย โดยระบบติ๊กให้ก่อนตามกฎในตาราง
+- เดือนใหม่เริ่มจากศูนย์ ไม่มียอดคงเหลือยกมาจากเดือนก่อน
 
-**Charges** — each has a `label` and a **signed** `amount`:
+## 6. ประเภทรายการ
 
-- **Positive** = the owner paid on the person's behalf → the person owes the owner more.
-- **Negative** = the person paid on the owner's behalf → offsets what they owe.
+ระบบแยก **บัตร** กับ **สินเชื่อ** ออกเป็นหมวดของตัวเอง เพราะสองอย่างนี้มีข้อมูลและพฤติกรรมไม่เหมือนรายจ่ายทั่วไป
 
-A charge only moves the running balance; it is **not** a cash event and touches no month's
-dashboard. (Fronting money for someone is treated as a future receivable, not this-month cash —
-§1, §9.)
+### 6.1 บัตรเครดิต
+- ข้อมูลถาวร: ชื่อ, ธนาคาร/ผู้ให้บริการ, วันตัดรอบ, วันครบกำหนดชำระ, สี/ไอคอน
+- ข้อมูลรายเดือน: **ยอดเต็ม**, **ยอดขั้นต่ำ**, **แผนการจ่าย** (เต็ม / ขั้นต่ำ / กำหนดเอง)
+- ตัวอย่างจาก Sheet: KBank, KTC, TTB, GSB, Aeon, LineBK, True pay next
 
-**Settlements** — the moment money actually changes hands to square up. A settlement records an
-`amount` and the **month** it happened in. It reduces the running balance toward zero **and** is
-a cash event in that month (D6):
+### 6.2 สินเชื่อ
+- ข้อมูลถาวร: ชื่อ, ยอดผ่อนต่องวด, จำนวนงวดทั้งหมด, งวดคงเหลือ, วันครบกำหนด
+- ข้อมูลรายเดือน: ยอดงวดนี้ (ปกติเท่ากับยอดผ่อนต่องวด แต่แก้ได้)
+- เมื่องวดคงเหลือเป็น 0 ระบบแจ้งว่าผ่อนครบแล้ว และไม่คัดลอกไปเดือนถัดไป
+- ตัวอย่าง: KBank loan, KTC pround, Krungthai loan
 
-- a person pays the owner → **รับแล้ว** in that month;
-- the owner pays a person → **จ่ายแล้ว** in that month.
+### 6.3 รายจ่ายทั่วไป
+- ข้อมูล: ชื่อ, ยอด, หมวด, ติ๊ก "ประจำ"
+- หมวดเริ่มต้น: ค่าใช้จ่าย, ค่าบริการรายเดือน, **ออม/ลงทุน** และ **จ่ายให้คน**
+- หมวด **ออม/ลงทุน** (Wed kept, Kept, Invest, Dad kept) นับเป็นเงินออกจากเดือน แต่สรุปแยกไว้ ให้เห็นว่าเป็นเงินเก็บ ไม่ใช่เงินที่ใช้หมด
+- หมวด **จ่ายให้คน** ใช้กับยอดที่คนอื่นส่งมาเรียกเก็บ เช่น ยอดที่ชมภู่ส่งมา 26,938.48 (ดูข้อ 9)
 
-The person's **running net** = Σ charges − Σ settlements:
+### 6.4 รายรับ
+- ข้อมูล: ชื่อ, ยอด, ติ๊ก "ประจำ"
+- รายรับประเภทนี้คือ **รายรับของเราเอง** เช่น Salary
+- เงินที่คนอื่นจ่ายคืนไม่ต้องกรอกเป็นรายรับ ระบบคำนวณจากส่วนแบ่งให้เอง (ข้อ 10)
 
-- **net > 0** → the person owes the owner → a **receivable**, shown in the People section.
-- **net < 0** → the owner owes the person → a **payable**, shown in the People section.
-- **net = 0** → square; nothing outstanding.
+## 7. รายการย่อย (Breakdown)
 
-> Worked example (Person B). Charges over time: `KTC +9,479`, `Shell +2,000`, `Durian −560`,
-> `Fortuner −4,909` → running net `+6,010` (they owe the owner ฿6,010), shown in the People
-> section — it does **not** touch any month's tiles yet. In August the owner records a
-> settlement of `฿6,010` in the August month: August's **รับแล้ว** rises ฿6,010 (real cash in),
-> and Person B's running net drops to `0`.
+ทุกรายการแตกเป็นรายการย่อยได้ เพื่อให้ดูรายละเอียดในแอปได้เลย ไม่ต้องเปิดบิลใหม่
 
-## 8. Splitting a bill
+- รายการย่อยมีข้อมูล: ชื่อ, ยอด, วันที่ (ไม่บังคับ), โน้ต, รูปแนบ/สลิป (ไม่บังคับ)
+- ตัวอย่าง: KTC 12,374 แตกได้เป็น ส่วนของ P'Ball 8,050 + ส่วนของเรา 4,324 หรือแตกละเอียดถึงระดับธุรกรรมก็ได้
+- **กฎยอดรวม**:
+  - ถ้ายังไม่มีรายการย่อย ยอดของรายการคือยอดที่กรอกไว้
+  - ถ้ามีรายการย่อยแล้ว ระบบแสดง **ยอดที่ยังไม่ได้แจกแจง** = ยอดรายการ − ผลรวมรายการย่อย
+  - ยอดที่ยังไม่ได้แจกแจงต้องไม่ติดลบ ถ้าติดลบระบบเตือน แต่ยังให้บันทึกได้
+- รายการย่อยแต่ละบรรทัดแบ่งยอดให้คนอื่นได้ (ข้อ 8)
 
-Splitting is a convenience action **on an expense**. The expense stays in full in the
-Expenses bucket (the owner really did pay the whole thing). Splitting only *writes charges into
-people's ledgers* (§7) for the shares others owe — it never creates a settlement, so it moves
-running balances, not this month's cash. People are matched or created **globally by name**
-(#3), so splitting in any month adds to the same person's running tab.
+## 8. การแบ่งยอด (Split)
 
-Two modes:
+แบ่งได้ทั้งที่ระดับรายการและระดับรายการย่อย มี 3 แบบ
 
-- **Even** — pick who shares it (optionally including the owner). Each share = `custom ÷
-  N`. A charge (positive, `label` = the expense name) is written to every participant
-  **except the owner**. The owner's own share stays absorbed in the expense.
-- **Manual** — type each person's amount directly. Those become their charges.
+| แบบ | ใช้เมื่อ | ตัวอย่างจาก Sheet |
+|---|---|---|
+| **หารเท่า** | แบ่งกันเท่า ๆ กันระหว่าง N คน (รวมเราด้วยหรือไม่ก็ได้) | คอลัมน์ "Chompoo / 2": Food, 7-Eleven, Fortuner, Dumbell |
+| **ตามสัดส่วน** | แบ่งเป็นเปอร์เซ็นต์หรืออัตราส่วน | 60:40, 70:30 |
+| **กำหนดยอดเอง** | ระบุยอดของแต่ละคนตรง ๆ | KTC: P'Ball 8,050 / เรา 4,324 |
 
-**Rounding rule (even split).** Work in satang (integer). Each non-owner share is
-`floor(custom ÷ N)`. The owner absorbs the remainder so the numbers reconcile exactly:
-`owner_share = custom − sum(other_shares)`. The owner already fronted the bill, so eating a
-few satang of rounding is correct.
+**กฎ**
+- ผลรวมของส่วนแบ่งต้องเท่ากับยอดของรายการหรือรายการย่อยนั้นพอดี
+- ระบบคำนวณเป็นหน่วยสตางค์ ถ้าหารไม่ลงตัว **เศษที่เหลือตกเป็นของเรา** เพื่อไม่ให้ไปเรียกเก็บเกินจากคนอื่น
+- **ทางลัด "ของคนนี้ทั้งหมด"**: กดทีเดียวเพื่อให้ทั้งรายการเป็นของอีกคน เช่น KBank loan 5,010 เป็นของ P'Ball ทั้งก้อน หรือรายการในคอลัมน์ "Chompoo" (G–H) ของ Sheet ที่คิดเต็มจำนวนโดยไม่หารสอง
+- **แบ่งหลายรายการพร้อมกัน**: เลือกหลายรายการแล้วตั้งการแบ่งครั้งเดียว เช่น เลือก Food, 7-Eleven, Fortuner, Dumbell แล้วกด "หารสองกับ Chompoo" ไม่ต้องหารทีละอัน (นี่คือเหตุผลที่ Sheet เดิมแยกคอลัมน์ "Chompoo / 2" ออกมาแล้วหารที่ยอดรวม)
+- ส่วนแบ่งของแต่ละคนถูกรวมเข้า **ยอดของคนนั้นในเดือนนั้น** (ข้อ 10) โดยไม่ต้องกรอกซ้ำในที่อื่น ซึ่งแก้ปัญหาข้อมูลซ้ำในตารางข้อ 1
+- **ถ้ารายการมีรายการย่อย** การแบ่งที่ระดับรายการจะใช้แค่ **ยอดที่ยังไม่ได้แจกแจง** เพื่อไม่ให้นับซ้ำกับการแบ่งของรายการย่อย
+- **ส่วนแบ่งคิดจากยอดเต็มของบิล ไม่ได้คิดจากแผนการจ่าย** ตัวอย่าง: แม้เดือนนี้เราจะจ่าย KTC แค่ขั้นต่ำ ส่วนของ P'Ball ก็ยังเป็น 8,050
 
-**Manual over/under.** Manual amounts are taken as given. If the entered shares exceed
-`custom`, the owner's implied share goes negative — allowed, but the UI should surface it so
-it isn't a silent mistake.
+## 9. หักกลบ (Offset)
 
-**After a split, the charge is independent (snapshot).** See Decision D1.
+ใช้เมื่อเราติดเงินอีกคนอยู่แล้ว เลยให้เขาจ่ายแทนเรา แล้วนำยอดนั้นไปหักจากยอดที่เขาติดเรา
 
-## 9. The dashboard — five numbers
+- ตัวอย่างจาก Sheet: เราต้องจ่าย P'Ball อยู่แล้ว จึงให้ P'Ball จ่าย Dad Insurance 3,851 กับ Fortuner 4,909 แทน แล้วหักออกจากยอดที่ P'Ball ต้องจ่ายคืนเรา
+- ในแอปบันทึกเป็นรายการ "เราติดเขา" ของคนนั้นในเดือนนั้น มีชื่อ ยอด และโน้ต
+- **ยอดสุทธิของคน = รวมส่วนแบ่งที่เขาติดเรา − รวมหักกลบที่เราติดเขา**
+  - บวก แปลว่าเขาต้องจ่ายเรา
+  - ลบ แปลว่าเราต้องจ่ายเขา
 
-All amounts use `custom` for expenses, `amount` for incomes, and **settlements** for people.
-Open person balances are **not** here — they live in the People section (below).
+## 10. สรุปยอดรายคน
 
-- **จ่ายแล้ว (paid)** = Σ expenses where `status = paid`
-  + Σ settlements **in this month** where the owner paid a person.
-- **รอจ่าย (to pay)** = Σ expenses where `status = pending`.
-- **รับแล้ว (received)** = Σ incomes where `status = received`
-  + Σ settlements **in this month** where a person paid the owner.
-- **รอรับ (to receive)** = Σ incomes where `status = pending`.
-- **สุทธิเดือนนี้ (net this month)** = `รับแล้ว − จ่ายแล้ว`.
+ในแต่ละเดือน แต่ละคนที่มียอดกับเราจะมีการ์ดสรุปที่แสดง:
+- รายการที่เขาติดเรา พร้อมที่มา (มาจากรายการไหน รายการย่อยไหน)
+- รายการหักกลบ
+- **ยอดสุทธิ**
+- สถานะการส่งยอดและการชำระ (ข้อ 11)
 
-This is the **net cash that moved this month, from zero** — money marked received (incl.
-settlements a person paid you this month) minus money marked paid (incl. settlements you paid a
-person this month). It is deliberately **not** your real cash-on-hand: there is **no
-starting-balance field** (D3), so it ignores whatever you were already holding on the 1st. A
-negative value means you paid out more than you took in *this month*, not that you're broke —
-check your bank for the true balance.
+ยอดสุทธิที่เป็นบวกถูกนับเป็น **รายรับจากคน** ในสรุปของเดือน แทนแถว "P'Ball" และ "Chompoo / 2" ในส่วน Income ของ Sheet เดิม
 
-### The People section (global, alongside the months)
+**ยอดจบในเดือน**: ยอดของแต่ละคนคิดเฉพาะในเดือนนั้น และไม่ยกไปเดือนหน้า
+- ไม่ว่ายอดสุทธิจะเป็นบวกหรือลบ ก็เคลียร์กันภายในเดือนนั้น
+- ถ้าจะปิดเดือนทั้งที่ยังมียอดเรียกเก็บที่ไม่ถึงสถานะ "ได้รับแล้ว" ระบบจะเตือนก่อนปิด
+- ยอดที่ค้างอยู่ยังอยู่ในเดือนเดิม และยังกด "จ่ายแล้ว" หรือ "ได้รับแล้ว" ต่อได้ แต่ **ไม่ถูกนำไปรวม** กับยอดของเดือนถัดไป
 
-Separate from any month, two running totals summarise all people (§7):
+## 11. ส่งยอดและแจ้งเตือน
 
-- **รวมที่คนติดเรา (owed to you)** = Σ `net` of people where `net > 0`.
-- **รวมที่เราติดคน (you owe)** = Σ `|net|` of people where `net < 0`.
+### 11.1 ส่งยอดเรียกเก็บ
+1. จากการ์ดสรุปของคนนั้น กด **"ส่งยอด"** ปุ่มนี้กดได้เมื่อยอดสุทธิเป็นบวกเท่านั้น ถ้าติดลบแปลว่าเราเป็นฝ่ายต้องจ่าย อีกฝ่ายต้องเป็นคนส่งยอดมา
+2. ระบบสร้าง **ยอดเรียกเก็บ** ที่มียอดสุทธิและรายละเอียดทุกบรรทัด (รายการย่อยและการหักกลบ) แนบรูปหรือโน้ตได้
+3. ผู้รับได้รับ **แจ้งเตือน** แล้วเปิดดูรายละเอียดได้ทั้งหมด
+4. ผู้รับเลือกได้ว่าจะ:
+   - **ยืนยัน**: ยอดเข้าไปอยู่ในเดือนเดียวกันของผู้รับอัตโนมัติ เป็นรายจ่ายหมวด "จ่ายให้คน"
+   - **สอบถาม**: ทิ้งคอมเมนต์ไว้ที่บรรทัดที่สงสัย แล้วผู้ส่งได้รับแจ้งเตือน
+5. ผู้รับกด **"จ่ายแล้ว"** แนบสลิปได้ แล้วผู้ส่งได้รับแจ้งเตือน
+6. ผู้ส่งกด **"ได้รับแล้ว"** เพื่อปิดยอด
 
-These are "as of now" across all months. An open balance sits here quietly; recording a
-**settlement** is what moves money into a specific month's รับแล้ว / จ่ายแล้ว above.
+**ความเป็นส่วนตัว**: ผู้รับเห็นเฉพาะบรรทัดในยอดเรียกเก็บของตัวเอง คือส่วนแบ่งและการหักกลบที่เกี่ยวกับเขา ไม่เห็นรายการอื่นหรือภาพรวมทั้งเดือนของผู้ส่ง
 
-## 10. Month lifecycle
+ตัวอย่าง: ชมภู่คำนวณยอดที่ Frong ต้องจ่ายเดือนนี้ได้ 26,938.48 แล้วส่งยอดมา Frong กดยืนยัน ยอดนี้จะเข้าไปอยู่ในรายจ่ายของ Frong เอง ไม่ต้องพิมพ์ใหม่
 
-- **Create month** — a named empty month (`label`, e.g. "ก.ค. 69"). Months are ordered by
-  creation time; the label is display-only and can be anything.
-- **Open new cycle (clone)** — create a new month by copying selected items from an existing
-  month. The owner ticks which **expenses** and **direct incomes** to carry.
-  - Carried items keep their names/amounts but reset `status` to `pending`.
-  - **People are not involved in clone at all** — they are global and span months by nature
-    (§7, D6), so there is nothing month-specific to carry.
-- **No auto-recurrence** beyond this explicit clone step.
+**สถานะของยอดเรียกเก็บ**
 
-## 11. Decisions log
+`ร่าง → ส่งแล้ว → ยืนยันแล้ว → จ่ายแล้ว → ได้รับแล้ว`
 
-- **D1 — Split entries are snapshots.** When a split writes an entry into a person's ledger,
-  that entry holds a fixed amount. Editing the source expense later does **not** change it.
-  To adjust, edit the ledger entry directly. The person's ledger is the source of truth for
-  what they owe. (`source_expense_id` is kept for reference/traceability only.)
-- **D2 — Negative net is a payable (shown in People, settled into a month).** A person whose
-  running net is negative is money the owner owes them. It shows as a payable in the People
-  section; it enters a month's **จ่ายแล้ว** only when the owner records a settlement paying them
-  (D6). (Supersedes the old rule that folded pending negative nets straight into รอจ่าย.)
-- **D3 — No carried cash (it's a flow, not a balance).** Months never inherit leftover cash.
-  `สุทธิเดือนนี้ = received − paid`, from zero, every month. This deliberately makes the
-  headline a *monthly cash-flow* figure, not a bank balance — a month is a closed box. The app
-  never claims to know your real cash-on-hand; #1 and #9 say so out loud. (Revised: the number
-  was previously mislabelled "เงินตอนนี้ / cash now", which implied a balance it never was.)
-- **D4 — Model A (per-person ledgers).** Chosen over a flat list of receivables, to support
-  offsetting entries (someone paying the owner back in advance) exactly like the sheet does. The
-  ledgers are now global (D6).
-- **D5 — ~~Debts are month-scoped~~ (superseded by D6).** Originally a person and their ledger
-  lived in one month and unsettled debts were not carried. Reversed: real interpersonal debts
-  span months, so people are now global — see D6.
-- **D6 — People are a global cross-month ledger; settlements are the cash events.** A person is
-  one record whose ledger runs across all months (#3, #4, #7). **Charges** move the running
-  balance only; a **settlement** (all or part of the balance) is a cash event in the month it
-  happens, landing in that month's **รับแล้ว** (they paid you) or **จ่ายแล้ว** (you paid them).
-  Open balances live in the People section, never in a month's four tiles. Chosen so a friend's
-  running tab and the monthly cash flow are both correct: the tab persists across months, and
-  money hits a month only when it actually moves. (Replaces D2's old folding rule and D5.)
-- **D7 — Multi-user with invite/accept linked debts.** Tallo becomes multi-user: everyone signs
-  in and owns their own months, expenses, incomes, and people (all data scoped per user). A
-  person label may be **linked** to another real user only through **invite + accept** — the
-  inviter invites by email, the invitee accepts, and only then are the accounts linked, with a
-  reciprocal person created on the invitee's side. Linked charges and settlements **auto-mirror**
-  to the counterpart with the **sign flipped per viewer**; either side may **dispute** an item,
-  which excludes it from the confirmed net and from month totals until resolved. The counterpart
-  sees only the linked line items, never the whole month. This deliberately **reverses** the old
-  single-owner assumption and the §12 "no shared/multi-user editing" stance (see §13). Auth is
-  now required in v1 — email + password only; Google OAuth / magic-link are left possible but
-  not built.
+ระหว่าง "ส่งแล้ว" กับ "ยืนยันแล้ว" มีสถานะ **"มีคำถาม"** แทรกได้
 
-## 12. Out of scope for v1
+### 11.2 แก้ยอดหลังส่ง
+- แก้ได้จนกว่าผู้รับจะกด "จ่ายแล้ว"
+- ทุกครั้งที่แก้ ระบบเก็บประวัติเป็นเวอร์ชัน แจ้งเตือนผู้รับพร้อมบอกส่วนที่เปลี่ยน และสถานะกลับไปเป็น "ส่งแล้ว"
 
-Multi-currency; interest/APR calculators on cards; analytics across months; budgets/targets;
-notifications; an opening-balance / real cash-on-hand view (the headline is a monthly flow —
-D3). Login is now **required** — Tallo is multi-user (email + password); see §13 and
-`design.md` §3/§5/§10. Google OAuth and magic-link remain possible in the schema but are **not**
-built in v1.
+### 11.3 แจ้งเตือน
+- แจ้งเตือน **ในแอปเท่านั้น** (กระดิ่งและหน้าแจ้งเตือน) ไม่มีแผนส่งแจ้งเตือนออกนอกแอป (Web Push, LINE, Email)
+- เหตุการณ์ที่แจ้งเตือน:
+  - ได้รับยอดใหม่
+  - ยอดถูกแก้ไข
+  - มีคำถามหรือคอมเมนต์
+  - อีกฝั่งกดจ่ายแล้วหรือได้รับแล้ว
+  - **บัตรหรือสินเชื่อใกล้ครบกำหนดชำระ** (เช่น ล่วงหน้า 3 วัน ผู้ใช้ตั้งค่าได้) แสดงเมื่อเปิดแอป
+- ผู้ใช้เปิดหรือปิดการแจ้งเตือนแต่ละประเภทได้
 
-## 13. Multi-user & linked debts
+## 12. ติดตามความคืบหน้า
 
-Tallo is now **multi-user**. Everyone signs in and owns their own months, expenses, incomes, and
-people — every screen is scoped to the signed-in user, and one user never sees another's month.
-Two users can, however, agree to **link** a shared debt so both sides see the same running tab,
-each from their own point of view.
+ทุกบรรทัดมีสถานะชัดเจน แทนการจำสีพื้นใน Sheet
 
-**Login.** Access requires an account (email + password); there is no anonymous / single-owner
-mode anymore. Everything a user records lives under their account and is private to them by
-default.
+| ประเภท | สถานะ |
+|---|---|
+| รายจ่าย / บัตร / สินเชื่อ | ยังไม่จ่าย → **จ่ายแล้ว** (บันทึกวันที่จ่ายและยอดที่จ่ายจริงได้) |
+| รายรับ | รอรับ → **ได้รับแล้ว** |
+| ยอดเรียกเก็บ | ตามข้อ 11.1 |
 
-**Linking a person to a real user (invite + accept).** A **person** (§3) is normally a one-sided
-local label — a name on the owner's ledger, meaning nothing to anyone else. The owner may
-**invite** the real person behind a label to link accounts, by email. The invite does nothing to
-the ledgers until the other user **accepts**. On accept, the two accounts are linked and a
-**reciprocal person** is created on the invitee's side pointing back at the inviter; a decline
-leaves both sides untouched. Consent is required from both ends — you can never attach yourself
-to someone's ledger without them agreeing.
+หน้าเดือนแสดง:
+- **ความคืบหน้า** เช่น "จัดการแล้ว 12 จาก 18 รายการ" พร้อมแถบ progress
+- **ยังต้องจ่าย** (รายจ่ายที่ยังไม่จ่าย) และ **ยังรอรับ** (รายรับและยอดจากคนที่ยังไม่ได้รับ)
+- ตัวกรอง "ยังไม่เสร็จ" เพื่อดูเฉพาะรายการที่เหลือ
+- รายการที่ **เลยวันครบกำหนดแต่ยังไม่จ่าย** ถูกไฮไลต์
 
-**Two-sided auto-mirror (per-viewer sign).** Once a person is linked, every **charge** and
-**settlement** that references that person is automatically **mirrored** onto the counterpart's
-matching person. The mirror is the same event seen from the other side, so its **sign is flipped
-per viewer**: a `+560` charge (they owe you) shows on their side as `−560` (from their seat, money
-they owe out — a payable of 560). Neither side re-enters anything; recording once updates both
-tabs, and the two running nets stay equal-and-opposite.
+## 13. สรุปเดือน
 
-**Dispute.** Either side may **dispute** a mirrored charge or settlement (e.g. "that's not my
-share"). A disputed item is **excluded from the confirmed net** — and therefore from any month
-totals it would otherwise touch — for *both* sides until it is **resolved**. Resolving restores
-it to the net. Disputes never silently change an amount; they only park an item out of the totals
-until the two people agree.
+แทนส่วน Summary / Income / Paid / Balance ของ Sheet เดิม
 
-**Privacy.** Linking shares **only the linked line items**, never the whole month. The
-counterpart sees the charges and settlements on the shared person and nothing else — not your
-expenses, incomes, other people, or dashboard.
+```
+รายรับ          = รายรับของเรา + ยอดสุทธิจากคนที่เป็นบวก
+รายจ่าย         = บัตร (ตามแผนการจ่าย) + สินเชื่อ + รายจ่ายทั่วไป + ยอดสุทธิที่เราติดคน
+คงเหลือ (แผน)    = รายรับ − รายจ่าย
+คงเหลือ (จริง)   = รายรับที่ได้รับแล้ว − รายจ่ายที่จ่ายแล้ว
+```
 
-**Unlinked people are unchanged.** A person you never link stays a one-sided local label that
-behaves exactly as §7 describes: your ledger only, no mirror, no counterpart, no dispute. Linking
-is opt-in, per person.
+- **เปรียบเทียบแผน**: แสดงคงเหลือ 3 แบบ แทนคอลัมน์ Amount / Minimum / Custom
+  - **ตามแผนที่เลือก**: บัตรแต่ละใบใช้แผนที่ตั้งไว้ (เต็ม / ขั้นต่ำ / กำหนดเอง)
+  - **ถ้าจ่ายเต็มทุกใบ**
+  - **ถ้าจ่ายขั้นต่ำทุกใบ**
+- บัตรที่ยังไม่ได้กรอกยอด ระบบแสดงเป็น **"ยังไม่กรอก"** ไม่นับเป็น 0 เงียบ ๆ และเตือนว่ายอดคงเหลือยังไม่ครบ ซึ่งแก้ปัญหา Balance ดูดีเกินจริงในตารางข้อ 1
+- แสดงยอด **ออม/ลงทุน** แยกไว้ใต้สรุป
+
+### 13.1 ตรวจกับตัวเลขในชีต1 (ตุลาคม)
+
+| | ตามแผน (Custom) | ขั้นต่ำทุกใบ |
+|---|---:|---:|
+| รายรับของเรา (Salary) | 53,350.00 | 53,350.00 |
+| ยอดสุทธิจาก Chompoo (Food 1,771 + 7-Eleven 1,358 + Fortuner 2,974 + Dumbell 447 = 6,550 ÷ 2) | 3,275.00 | 3,275.00 |
+| ยอดสุทธิจาก P'Ball (ส่วนแบ่ง 28,332 − หักกลบ 8,760) | 19,572.00 | 19,572.00 |
+| **รายรับ** | **76,197.00** | **76,197.00** |
+| บัตรและสินเชื่อ | *ยังไม่กรอก* | 40,055.00 |
+| รายจ่ายทั่วไป (รวมยอดที่จ่ายให้ Chompoo 26,938.48) | 40,828.48 | 40,828.48 |
+| **คงเหลือ** | **35,368.52 ⚠️ ยังไม่รวมบัตร** | **−4,686.48** |
+
+ตัวเลขตรงกับ Sheet ทุกช่อง ต่างกันแค่ตรงที่แอปจะเตือนว่าคอลัมน์ Custom ยังไม่ได้กรอกยอดบัตร
+
+## 14. ขอบเขตการทำ
+
+### MVP
+- สมัครหรือเข้าสู่ระบบ, เพิ่มผู้ติดต่อ และผูกผู้ติดต่อกับ user
+- หน้ารายการเดือน, สร้างเดือน (เริ่มว่างหรือคัดลอก), ปิด/เปิดเดือน
+- บัตร, สินเชื่อ, รายจ่ายทั่วไป, รายรับ
+- รายการย่อย
+- แบ่งยอด 3 แบบ และหักกลบ
+- สรุปรายคนและสรุปเดือน (รวมการเปรียบเทียบแผน)
+- สถานะและความคืบหน้า
+- ส่งยอด, ยืนยัน และจ่ายแล้ว พร้อมแจ้งเตือนในแอป
+
+### ระยะถัดไป
+- เตือนวันครบกำหนด (ในแอป)
+- คอมเมนต์รายบรรทัด และประวัติเวอร์ชันของยอดเรียกเก็บ
+- แนบรูปบิลหรือสลิป
+- ลิงก์แชร์ยอดให้คนที่ยังไม่มีบัญชี
+- นำเข้าข้อมูลย้อนหลังจาก Google Sheet (Oct 25 – Sep 26)
+- กราฟแนวโน้มรายเดือน และติดตามยอดหนี้คงเหลือของสินเชื่อ
+
+## 15. การตัดสินใจ
+
+| # | เรื่อง | ข้อสรุป |
+|---|---|---|
+| 1 | ส่วนแบ่งกับแผนการจ่าย | ส่วนแบ่งคิดจากยอดเต็มของบิลเสมอ (ข้อ 8) |
+| 2 | ยอดค้างข้ามเดือน | จบในเดือน ไม่ยกยอด (ข้อ 10) |
+| 3 | คอลัมน์ "Chompoo" ใน Sheet | เป็นรายการที่คิดเต็มจำนวน ไม่หารสอง ในแอปใช้ทางลัด "ของคนนี้ทั้งหมด" ส่วน "Chompoo / 2" ใช้ "แบ่งหลายรายการพร้อมกัน" แทน (ข้อ 8) |
+| 4 | ช่องทางแจ้งเตือน | ในแอปเท่านั้น (ข้อ 11.3) |
+| 5 | ความเป็นส่วนตัว | ผู้รับเห็นเฉพาะบรรทัดของตัวเอง (ข้อ 11.1) |
+| 6 | Backend | **Supabase**: Auth, Postgres, RLS (บังคับข้อ 5), Realtime (แจ้งเตือนในแอป), Storage (สลิป) |
+
+ตอนนี้ไม่มีคำถามค้างแล้ว
