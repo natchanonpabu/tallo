@@ -456,6 +456,6 @@ src/
    - ข้อจำกัด: 1 คนต่อ 1 เดือนมีได้แค่ 1 ใบที่ยังไม่ถูกยกเลิก ถ้าได้รับเงินแล้วมียอดเพิ่มทีหลัง ต้องลงในเดือนถัดไป
 5. ✅ **Migration 5** (`20261029160000_due_reminders.sql`): `create_due_notifications` + pg_cron ทุกวัน 08:00 (Asia/Bangkok) ส่งแจ้งเตือน `due_soon` รายการละครั้งเดียว
 6. ✅ **Migration 6** (`20261029170000_single_amount.sql`): ตัดยอดเต็ม/ขั้นต่ำ/แผนการจ่ายของบัตร ใช้ `amount` อย่างเดียว
-7. ✅ **Seed** (`supabase/seed.sql`): user ทดลอง `frong@tallo.local`, `ball@tallo.local`, `chompoo@tallo.local` (รหัส `password123`) + เดือนตุลาคม 2026 ของ Frong จากชีต1 ยกเว้น 4 รายการ Chompoo / 2 ที่ต้องเพิ่มเป็นรายการย่อยในบัตรเอง (คงเหลือ −7,961.48 → −4,686.48 เมื่อเพิ่มครบ)
+7. ✅ **Seed** (`supabase/seed.sql`): user ทดลอง `frong@tallo.local`, `ball@tallo.local`, `chompoo@tallo.local` (รหัส `password123`) + เดือนตุลาคม 2026 ของ Frong จากชีต1 ครบทุกรายการ คงเหลือ −4,686.48 ตรงกับชีต (4 รายการ Chompoo / 2 วางในบัตรที่ยอดรับได้ เพราะชีตไม่ได้บอกว่าบัตรใบไหน)
 
 แต่ละ migration มีเทสต์ SQL (pgTAP ผ่าน `supabase test db`) ครอบคลุมการปัดเศษของการแบ่ง, RLS ข้าม user และ state machine ของยอดเรียกเก็บ

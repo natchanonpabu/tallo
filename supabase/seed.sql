@@ -5,9 +5,9 @@
 --   ball@tallo.local     P'Ball — pays Frong back for his part of Frong's cards and loans
 --   chompoo@tallo.local  Chompoo
 --
--- Not seeded: the "Chompoo / 2" items (Food 1,771 / 7 Eleven 1,358 / Fortuner 2,974 / Dumbell 447).
--- They belong as sub-items of whichever card paid for them; add them in the app and split them
--- 50/50 with Chompoo. Without them October's balance is −7,961.48; with them it is −4,686.48,
+-- The "Chompoo / 2" items (Food 1,771 / 7 Eleven 1,358 / Fortuner 2,974 / Dumbell 447) are card
+-- sub-items split 50/50 with Chompoo. The sheet does not say which card paid for each, so they are
+-- placed on cards with enough room left; move them if that is wrong. October's balance is −4,686.48,
 -- matching the sheet (business.md §13.1).
 
 -- ---------------------------------------------------------------------------
@@ -100,10 +100,14 @@ from (values
   ('e1000000-0000-0000-0000-000000000041'::uuid, 'income',  null, null,           true,  'Salary',            5335000::bigint, 41)
 ) as i (id, kind, account, category, recurring, name, amount, position);
 
--- P'Ball's part of the KTC and TTB bills.
-insert into public.sub_items (id, owner_id, item_id, name, amount) values
-  ('f1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000002', 'P''Ball', 805000),
-  ('f1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000003', 'P''Ball', 222100);
+-- P'Ball's part of the KTC and TTB bills, and the "Chompoo / 2" column spread over the cards.
+insert into public.sub_items (id, owner_id, item_id, name, amount, position) values
+  ('f1000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000002', 'P''Ball',   805000, 1),
+  ('f1000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000003', 'P''Ball',   222100, 1),
+  ('f1000000-0000-0000-0000-000000000011', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000001', 'Food',     177100, 1),
+  ('f1000000-0000-0000-0000-000000000012', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000005', '7 Eleven', 135800, 1),
+  ('f1000000-0000-0000-0000-000000000013', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000002', 'Fortuner', 297400, 2),
+  ('f1000000-0000-0000-0000-000000000014', '11111111-1111-1111-1111-111111111111', 'e1000000-0000-0000-0000-000000000003', 'Dumbell',  44700,  2);
 
 -- Splits go through the RPCs, acting as Frong.
 select set_config('request.jwt.claims', '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}', false);
@@ -124,6 +128,14 @@ select public.apply_split(
 select public.set_split('e1000000-0000-0000-0000-000000000031', null, 'fixed',
                         '[{"contact_id": "c1000000-0000-0000-0000-000000000001", "amount": 13200}]',
                         true, null, true);
+
+-- Chompoo / 2: 6,550 halved = 3,275.
+select public.apply_split(
+  '[{"item_id": "e1000000-0000-0000-0000-000000000001", "sub_item_id": "f1000000-0000-0000-0000-000000000011"},
+    {"item_id": "e1000000-0000-0000-0000-000000000005", "sub_item_id": "f1000000-0000-0000-0000-000000000012"},
+    {"item_id": "e1000000-0000-0000-0000-000000000002", "sub_item_id": "f1000000-0000-0000-0000-000000000013"},
+    {"item_id": "e1000000-0000-0000-0000-000000000003", "sub_item_id": "f1000000-0000-0000-0000-000000000014"}]',
+  'equal', '[{"contact_id": "c1000000-0000-0000-0000-000000000002"}]');
 
 select set_config('request.jwt.claims', '', false);
 
