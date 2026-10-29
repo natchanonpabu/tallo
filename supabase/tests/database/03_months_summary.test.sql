@@ -59,7 +59,7 @@ select public.set_split('10000000-0000-0000-0000-000000000004', null, 'fixed',
 select results_eq(
   $$ select income_own, from_people, expense_total, balance, missing_count, total_count
      from public.month_summaries where month_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' $$,
-  $$ values (5335000::bigint, 13200::bigint, 2187100::bigint, 3161100::bigint, 0, 7) $$,
+  $$ values (5335000::bigint, 13200::bigint, 2187100::bigint, 3161100::bigint, 0, 8) $$,
   'October summary');
 
 update public.items set status = 'done', done_at = now() where name in ('Salary', 'Shopee');

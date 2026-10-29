@@ -1,13 +1,16 @@
-import { PaperPlaneTilt, Plus, Trash, Warning } from "@phosphor-icons/react"
+import { CheckCircle, Circle, PaperPlaneTilt, Plus, Trash, Warning } from "@phosphor-icons/react"
 
 import { ContactChip, EmptyState, Money } from "@/components/bits"
 import { Button } from "@/components/ui/button"
 import type { MonthData } from "@/features/month/use-month-data"
 import { REQUEST_STATUS_CLASSES, REQUEST_STATUS_LABELS } from "@/lib/labels"
-import type { Contact, Offset, PaymentRequest } from "@/lib/types"
+import type { Contact, Offset, PaymentRequest, Settlement } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export type PeopleActions = {
+  onSettle: (contact: Contact, net: number) => void
+  onUnsettle: (settlement: Settlement) => void
+  onResettle: (settlement: Settlement, net: number) => void
   onAddOffset: (contactId?: string) => void
   onDeleteOffset: (offset: Offset) => void
   onSend: (contact: Contact) => void
@@ -54,15 +57,43 @@ export function PeopleSection({
             const shares = data.shares.filter((s) => s.contact_id === contact.id && s.amount > 0)
             const offsets = data.offsets.filter((o) => o.contact_id === contact.id)
             const request = data.requests.find((r) => r.sender_contact_id === contact.id)
+            const settlement = data.settlements.find((s) => s.contact_id === contact.id)
+            const settledChanged = settlement && settlement.amount !== net
             const changed =
               request && ["sent", "questioned", "accepted"].includes(request.status) && request.total !== net
             const canSend =
-              !locked && !!contact.linked_user_id && net > 0 && (!request || ["sent", "questioned", "accepted"].includes(request.status))
+              !locked &&
+              !settlement &&
+              !!contact.linked_user_id &&
+              net > 0 &&
+              (!request || ["sent", "questioned", "accepted"].includes(request.status))
 
             return (
               <li key={contact.id} className="rounded-3xl bg-card p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <ContactChip name={contact.name} color={contact.color} className="text-sm" />
+                  <div className="flex items-center gap-2">
+                    {net !== 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          !settlement
+                            ? actions.onSettle(contact, net)
+                            : settledChanged
+                              ? actions.onResettle(settlement, net)
+                              : actions.onUnsettle(settlement)
+                        }
+                        aria-label={settlement ? "ยกเลิกการติ๊ก" : net > 0 ? "ได้รับเงินแล้ว" : "จ่ายคืนแล้ว"}
+                        className="text-muted-foreground hover:text-success-foreground"
+                      >
+                        {settlement ? (
+                          <CheckCircle weight="fill" className="size-7 text-success-foreground" />
+                        ) : (
+                          <Circle weight="light" className="size-7" />
+                        )}
+                      </button>
+                    )}
+                    <ContactChip name={contact.name} color={contact.color} className="text-sm" />
+                  </div>
                   {request && (
                     <span
                       className={cn("rounded-full px-2 py-0.5 text-xs font-medium", REQUEST_STATUS_CLASSES[request.status])}
@@ -111,23 +142,25 @@ export function PeopleSection({
                   </li>
                 </ul>
 
+                {settlement && (
+                  <p className="mt-2 rounded-xl bg-success/50 px-3 py-1.5 text-xs text-success-foreground">
+                    {settlement.amount >= 0 ? "ได้รับเงินแล้ว" : "จ่ายคืนแล้ว"} <Money satang={Math.abs(settlement.amount)} />{" "}
+                    บาท · {new Date(settlement.settled_at).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
+                    {settledChanged && " — ยอดเปลี่ยนหลังติ๊ก กดวงกลมเพื่ออัปเดตเป็นยอดใหม่"}
+                  </p>
+                )}
                 {changed && (
                   <p className="mt-2 flex items-center gap-1 text-xs text-warning-foreground">
                     <Warning weight="fill" className="size-3.5" />
                     ยอดเปลี่ยนจากที่ส่งไป (<Money satang={request.total} />) — ส่งใหม่ได้
                   </p>
                 )}
-                {!contact.linked_user_id && net > 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {contact.name} ยังไม่ได้ผูกบัญชี ผูกได้ที่เมนู "คน" เพื่อส่งยอดในแอป
-                  </p>
-                )}
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {canSend && (
-                    <Button size="sm" onClick={() => actions.onSend(contact)}>
+                    <Button size="sm" variant="secondary" onClick={() => actions.onSend(contact)}>
                       <PaperPlaneTilt weight="light" data-icon="inline-start" />
-                      {request ? "ส่งใหม่" : "ส่งยอด"}
+                      {request ? "ส่งยอดใหม่" : "ส่งยอดให้ดูในแอป"}
                     </Button>
                   )}
                   {request?.status === "paid" && (

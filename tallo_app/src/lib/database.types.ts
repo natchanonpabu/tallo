@@ -385,6 +385,50 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"settlements": {
+                  Row: {
+                    "amount": number,"contact_id": string,"id": string,"month_id": string,"owner_id": string,"settled_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount": number,"contact_id": string,"id"?: string,"month_id": string,"owner_id"?: string,"settled_at"?: string
+                  }
+                  Update: {
+                    "amount"?: number,"contact_id"?: string,"id"?: string,"month_id"?: string,"owner_id"?: string,"settled_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "settlements_contact_id_fkey"
+      columns: ["contact_id"]
+isOneToOne: false
+      referencedRelation: "contacts"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "settlements_month_id_fkey"
+      columns: ["month_id"]
+isOneToOne: false
+      referencedRelation: "month_summaries"
+      referencedColumns: ["month_id"]
+    },{
+      foreignKeyName: "settlements_month_id_fkey"
+      columns: ["month_id"]
+isOneToOne: false
+      referencedRelation: "months"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "settlements_owner_id_fkey"
+      columns: ["owner_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "settlements_owner_id_fkey"
+      columns: ["owner_id"]
+isOneToOne: false
+      referencedRelation: "public_profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"shares": {
                   Row: {
                     "amount": number,"contact_id": string,"fixed_amount": number | null,"id": string,"month_id": string,"owner_id": string,"rule_id": string,"weight": number | null

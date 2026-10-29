@@ -12,6 +12,7 @@ import { CATEGORY_LABELS, KIND_LABELS } from "@/lib/labels"
 import { parseBaht } from "@/lib/money"
 import { supabase } from "@/lib/supabase"
 import type { DebtAccount, ExpenseCategory, Item, ItemKind } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const NEW_ACCOUNT = "__new__"
 
@@ -110,27 +111,36 @@ export function ItemDialog({
           </DialogTitle>
         </DialogHeader>
         <form action={formAction} className="grid gap-4">
-          {!item && isDebt && (
-            <Field label={KIND_LABELS[kind]}>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {available.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value={NEW_ACCOUNT}>+ {KIND_LABELS[kind]}ใหม่</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
+          {!item && isDebt && available.length > 0 && (
+            <div className="grid gap-1.5 text-sm">
+              <span className="font-medium">เลือก{KIND_LABELS[kind]}ที่เคยใช้ หรือเพิ่มใบใหม่</span>
+              <div className="flex flex-wrap gap-2">
+                {[...available.map((a) => ({ id: a.id, name: a.name })), { id: NEW_ACCOUNT, name: "+ ใบใหม่" }].map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setAccountId(a.id)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5",
+                      accountId === a.id ? "border-transparent bg-primary text-primary-foreground" : "hover:bg-muted",
+                    )}
+                  >
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {showNameInput && (
-            <Field label={isDebt && !item ? `ชื่อ${KIND_LABELS[kind]}ใหม่` : "ชื่อรายการ"}>
-              <Input name="name" defaultValue={item?.name} required autoFocus placeholder="เช่น KTC, Shopee" />
+            <Field label={isDebt ? `ชื่อ${KIND_LABELS[kind]}` : "ชื่อรายการ"}>
+              <Input
+                name="name"
+                defaultValue={item?.name}
+                required
+                autoFocus
+                placeholder={kind === "card" ? "เช่น KTC, KBank" : kind === "loan" ? "เช่น KBank loan" : "เช่น Shopee"}
+              />
             </Field>
           )}
 

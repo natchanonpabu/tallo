@@ -11,6 +11,7 @@ import type {
   Offset,
   PaymentRequest,
   PersonBalance,
+  Settlement,
   Share,
   SplitRule,
   SubItem,
@@ -29,10 +30,11 @@ export type MonthData = {
   contacts: Contact[]
   accounts: DebtAccount[]
   requests: PaymentRequest[]
+  settlements: Settlement[]
 }
 
 async function loadMonth(monthId: string): Promise<MonthData> {
-  const [month, summary, items, rules, shares, offsets, balances, contacts, accounts, requests] = await Promise.all([
+  const [month, summary, items, rules, shares, offsets, balances, contacts, accounts, requests, settlements] = await Promise.all([
     supabase.from("months").select("*").eq("id", monthId).single().then(must),
     supabase.from("month_summaries").select("*").eq("month_id", monthId).maybeSingle().then(must),
     supabase.from("items").select("*").eq("month_id", monthId).order("position").order("created_at").then(must),
@@ -43,6 +45,7 @@ async function loadMonth(monthId: string): Promise<MonthData> {
     supabase.from("contacts").select("*").order("created_at").then(must),
     supabase.from("debt_accounts").select("*").order("created_at").then(must),
     supabase.from("payment_requests").select("*").eq("sender_month_id", monthId).neq("status", "cancelled").then(must),
+    supabase.from("settlements").select("*").eq("month_id", monthId).then(must),
   ])
   const subItems = items.length
     ? must(
@@ -54,7 +57,7 @@ async function loadMonth(monthId: string): Promise<MonthData> {
           .order("created_at"),
       )
     : []
-  return { month, summary, items, subItems, rules, shares, offsets, balances, contacts, accounts, requests }
+  return { month, summary, items, subItems, rules, shares, offsets, balances, contacts, accounts, requests, settlements }
 }
 
 export type SplitInfo = { rule: SplitRule; shares: Share[] }

@@ -138,6 +138,21 @@ export function MonthPage() {
   }
 
   const peopleActions: PeopleActions = {
+    onSettle: (contact, net) =>
+      void run(
+        () => supabase.from("settlements").insert({ month_id: month.id, contact_id: contact.id, amount: net }),
+        net > 0 ? `${contact.name} จ่ายแล้ว` : `จ่ายคืน ${contact.name} แล้ว`,
+      ),
+    onUnsettle: (settlement) => void run(() => supabase.from("settlements").delete().eq("id", settlement.id)),
+    onResettle: (settlement, net) =>
+      void run(
+        () =>
+          supabase
+            .from("settlements")
+            .update({ amount: net, settled_at: new Date().toISOString() })
+            .eq("id", settlement.id),
+        "อัปเดตยอดแล้ว",
+      ),
     onAddOffset: (contactId) => setDialog({ type: "offset", contactId }),
     onDeleteOffset: (offset) => void run(() => supabase.from("offsets").delete().eq("id", offset.id), "ลบแล้ว"),
     onSend: (contact) =>

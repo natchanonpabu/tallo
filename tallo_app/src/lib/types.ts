@@ -13,6 +13,7 @@ export type SubItem = Tables["sub_items"]["Row"]
 export type SplitRule = Omit<Tables["split_rules"]["Row"], "split_target">
 export type Share = Tables["shares"]["Row"]
 export type Offset = Tables["offsets"]["Row"]
+export type Settlement = Tables["settlements"]["Row"]
 export type PaymentRequest = Tables["payment_requests"]["Row"]
 export type RequestLine = Tables["request_lines"]["Row"]
 export type RequestEvent = Tables["request_events"]["Row"]
