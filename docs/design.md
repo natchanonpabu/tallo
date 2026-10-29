@@ -233,7 +233,7 @@ create table shares (
 - "ส่วนของเรา" **ไม่เก็บเป็นแถว** แต่คำนวณเป็น target − Σshares ทำให้ผลรวมเท่ากับ target เสมอ และเศษตกเป็นของเราตามกฎ business ข้อ 8
 - "ของคนนี้ทั้งหมด" = `equal` กับ 1 คน และ `include_me = false`
 - **คำนวณใหม่อัตโนมัติ**: trigger บน `items.amount` และ `sub_items` (insert/update/delete) เรียก `recompute_split` ของกฎที่เกี่ยวข้อง ถ้า `fixed` เกิน target หลังแก้ยอด ให้ทำเป็น error ที่ UI จับไปเตือนได้
-- **แบ่งหลายรายการพร้อมกัน**: RPC `apply_split(targets jsonb, mode, include_me, parts jsonb)` วนสร้างกฎทีละ target ใน transaction เดียว
+- **แบ่งหลายรายการพร้อมกัน**: RPC `apply_split(targets jsonb, mode, parts jsonb, include_me, my_weight, recurring)` วนสร้างกฎทีละ target ใน transaction เดียว
   - หมายเหตุ: หารสองทีละรายการ ผลรวมอาจน้อยกว่าการหารยอดรวมใน Sheet ได้ไม่เกิน 1 สตางค์ต่อรายการ (เศษตกเป็นของเรา)
 
 ### 3.7 หักกลบ
@@ -361,7 +361,7 @@ where c.owner_id = m.owner_id
 | `expense_if_full` / `expense_if_minimum` | เหมือน `expense_plan` แต่บังคับให้บัตรใช้ `amount` หรือ `minimum_amount` |
 | `balance_plan` / `balance_if_full` / `balance_if_minimum` | `income_own + from_people − expense_* − to_people` |
 | `balance_actual` | รายรับที่ `done` + ยอดเรียกเก็บที่ `received` − รายจ่ายที่ `done` (ใช้ `coalesce(paid_amount, planned_amount)`) |
-| `missing_count` | จำนวนบัตรที่ยอดตามแผนยังเป็น `null` → UI แสดง "⚠️ ยังไม่รวมบัตร" |
+| `missing_plan` / `missing_if_full` / `missing_if_minimum` | จำนวนรายการที่ยอดของแต่ละแบบยังเป็น `null` ถ้า > 0 UI ต้องแสดง "⚠️ ยังไม่รวม…" |
 | `savings_total` | Σ รายจ่าย `category = 'savings'` |
 | `done_count` / `total_count` | ความคืบหน้า (นับ items + ยอดเรียกเก็บของเดือน) |
 
@@ -386,8 +386,9 @@ where c.owner_id = m.owner_id
 | RPC | ผู้เรียก | หน้าที่ |
 |---|---|---|
 | `create_month(year, month, copy_from uuid, copy_item_ids uuid[])` | เจ้าของ | สร้างเดือน และคัดลอกรายการตาม 6.1 |
-| `set_month_status(month_id, status)` | เจ้าของ | เปิด, ปิด หรือเปิดใหม่ คืนรายการยอดเรียกเก็บที่ยังค้างกลับมาเพื่อให้ UI เตือนก่อนปิด |
-| `set_split(item_id, sub_item_id, mode, include_me, my_weight, parts jsonb, recurring)` | เจ้าของ | สร้างหรือแทนที่กฎ แล้วคำนวณ `shares` |
+| `set_month_status(month_id, status)` | เจ้าของ | เปิด, ปิด หรือเปิดใหม่ (Migration 4 จะเพิ่มการคืนยอดเรียกเก็บที่ยังค้าง เพื่อให้ UI เตือนก่อนปิด) |
+| `month_copy_candidates(month_id)` | เจ้าของ | รายการที่คัดลอกได้ พร้อมค่า `suggested` สำหรับติ๊กไว้ก่อน |
+| `set_split(item_id, sub_item_id, mode, parts jsonb, include_me, my_weight, recurring)` | เจ้าของ | สร้างหรือแทนที่กฎ แล้วคำนวณ `shares` |
 | `apply_split(targets jsonb, …)` | เจ้าของ | แบ่งหลายรายการพร้อมกัน |
 | `clear_split(item_id, sub_item_id)` | เจ้าของ | ลบกฎ |
 | `link_contact(contact_id, friend_code)` | เจ้าของ | ผูกผู้ติดต่อกับ user |
@@ -460,8 +461,8 @@ src/
 ## 8. ลำดับการทำ
 
 1. ✅ **Migration 1** (`20261021063616_core_schema.sql`): profiles, contacts, debt_accounts, months, items, sub_items + RLS + trigger ล็อกเดือน + `link_contact` + views `public_profiles`, `item_totals`
-2. **Migration 2**: split_rules, shares, offsets + `recompute_split` + `set_split` / `apply_split` + views
-3. **Migration 3**: `create_month` (คัดลอก) + `month_summaries`
+2. ✅ **Migration 2** (`20261029150406_splits_offsets.sql`): split_rules, shares, offsets + `recompute_split` + `set_split` / `apply_split` + views
+3. ✅ **Migration 3** (`20261029150707_months_summary.sql`): `month_copy_candidates`, `create_month` (คัดลอก), `set_month_status`, `month_summaries`
 4. **Migration 4**: payment_requests, request_lines, request_events, notifications + RPC ข้อ 6.2 + Realtime
 5. **Migration 5**: pg_cron เตือนวันครบกำหนด
 6. **Seed**: ข้อมูลเดือนตุลาคมจากชีต1 ใช้ทดสอบว่าได้ 35,368.52 / −4,686.48 (business ข้อ 13.1)
