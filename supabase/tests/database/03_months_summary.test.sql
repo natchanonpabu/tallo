@@ -19,21 +19,21 @@ insert into public.debt_accounts (id, owner_id, kind, name, due_day, installment
   ('d0000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'loan', 'Done loan', null, 100000, 5);
 
 insert into public.items (id, owner_id, month_id, kind, debt_account_id, category, recurring, name,
-                          amount, minimum_amount, pay_plan, installment_no, due_date, position) values
+                          amount, installment_no, due_date, position) values
   ('10000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'card', 'd0000000-0000-0000-0000-000000000001', null, false, 'KTC', 1237400, 120000, 'minimum', null, '2026-10-31', 1),
+   'card', 'd0000000-0000-0000-0000-000000000001', null, false, 'KTC', 1237400, null, '2026-10-31', 1),
   ('10000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'loan', 'd0000000-0000-0000-0000-000000000002', null, false, 'KBank loan', 501000, null, null, 3, '2026-10-05', 2),
+   'loan', 'd0000000-0000-0000-0000-000000000002', null, false, 'KBank loan', 501000, 3, '2026-10-05', 2),
   ('10000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'loan', 'd0000000-0000-0000-0000-000000000003', null, false, 'Done loan', 100000, null, null, 5, '2026-10-20', 3),
+   'loan', 'd0000000-0000-0000-0000-000000000003', null, false, 'Done loan', 100000, 5, '2026-10-20', 3),
   ('10000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'expense', null, 'subscription', true, 'Youtube', 19800, null, null, null, null, 4),
+   'expense', null, 'subscription', true, 'Youtube', 19800, null, null, 4),
   ('10000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'expense', null, 'spending', false, 'Shopee', 328800, null, null, null, null, 5),
+   'expense', null, 'spending', false, 'Shopee', 328800, null, null, 5),
   ('10000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'income', null, null, true, 'Salary', 5335000, null, null, null, null, 6),
+   'income', null, null, true, 'Salary', 5335000, null, null, 6),
   ('10000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-   'expense', null, 'pay_person', true, 'Chompoo', 100, null, null, null, null, 7);
+   'expense', null, 'pay_person', true, 'Chompoo', 100, null, null, 7);
 
 -- Item 7 came from a payment request Ball sent to Frong.
 insert into public.months (id, owner_id, year, month) values
@@ -55,14 +55,12 @@ select public.set_split('10000000-0000-0000-0000-000000000004', null, 'fixed',
                         true, null, true);
 
 -- Summary of October.
--- expenses (plan): KTC minimum 120,000 + loans 601,000 + Youtube 19,800 + Shopee 328,800 + Chompoo 100
+-- expenses: KTC 1,237,400 + loans 601,000 + Youtube 19,800 + Shopee 328,800 + Chompoo 100
 select results_eq(
-  $$ select income_own, from_people, expense_plan, balance_plan, balance_if_full, balance_if_minimum,
-            missing_plan, total_count
+  $$ select income_own, from_people, expense_total, balance, missing_count, total_count
      from public.month_summaries where month_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' $$,
-  $$ values (5335000::bigint, 13200::bigint, 1069700::bigint, 4278500::bigint, 3161100::bigint,
-             4278500::bigint, 0, 7) $$,
-  'October summary: plan, full and minimum balances');
+  $$ values (5335000::bigint, 13200::bigint, 2187100::bigint, 3161100::bigint, 0, 7) $$,
+  'October summary');
 
 update public.items set status = 'done', done_at = now() where name in ('Salary', 'Shopee');
 select is((select balance_actual from public.month_summaries
@@ -89,10 +87,10 @@ select lives_ok($$ select public.create_month(2026::smallint, 11::smallint, 'aaa
 select is((select count(*) from public.items i join public.months m on m.id = i.month_id where m.month = 11),
           4::bigint, 'November has the 4 suggested items');
 select results_eq(
-  $$ select i.amount, i.minimum_amount, i.pay_plan::text, i.due_date, i.status::text
+  $$ select i.amount, i.due_date, i.status::text
      from public.items i join public.months m on m.id = i.month_id where m.month = 11 and i.kind = 'card' $$,
-  $$ values (null::bigint, null::bigint, 'minimum', '2026-11-30'::date, 'pending') $$,
-  'card: amounts cleared, plan kept, due day clamped to the month end');
+  $$ values (null::bigint, '2026-11-30'::date, 'pending') $$,
+  'card: amount cleared, due day clamped to the month end');
 select results_eq(
   $$ select i.amount, i.installment_no, i.due_date
      from public.items i join public.months m on m.id = i.month_id where m.month = 11 and i.kind = 'loan' $$,
@@ -107,8 +105,8 @@ select is((select count(*) from public.sub_items s join public.items i on i.id =
           0::bigint, 'sub-items are not copied');
 
 select results_eq(
-  $$ select missing_plan, missing_if_full, missing_if_minimum from public.month_summaries where month = 11 $$,
-  $$ values (1, 1, 1) $$,
+  $$ select missing_count from public.month_summaries where month = 11 $$,
+  $$ values (1) $$,
   'the copied card counts as not filled in');
 
 -- Explicit selection and blank months.

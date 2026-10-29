@@ -69,7 +69,6 @@ profiles ─< notifications
 create type month_status   as enum ('draft', 'active', 'closed');
 create type item_kind      as enum ('card', 'loan', 'expense', 'income');
 create type expense_cat    as enum ('spending', 'subscription', 'savings', 'pay_person');
-create type pay_plan       as enum ('full', 'minimum', 'custom');
 create type item_status    as enum ('pending', 'done');   -- จ่ายแล้ว / ได้รับแล้ว
 create type split_mode     as enum ('equal', 'ratio', 'fixed');
 create type request_status as enum ('draft', 'sent', 'questioned', 'accepted', 'paid', 'received', 'cancelled');
@@ -145,21 +144,12 @@ create table items (
   name               text not null,
   category           expense_cat,                    -- ใช้กับ kind = 'expense'
   recurring          boolean not null default false, -- ใช้ตอนคัดลอกเดือน
-  amount             bigint check (amount >= 0),     -- บัตร: ยอดเต็ม / อื่น ๆ: ยอดของรายการ (null = ยังไม่กรอก)
-  minimum_amount     bigint check (minimum_amount >= 0),  -- บัตรเท่านั้น
-  pay_plan           pay_plan,                            -- บัตรเท่านั้น
-  custom_amount      bigint check (custom_amount >= 0),   -- บัตร + pay_plan = 'custom'
+  amount             bigint check (amount >= 0),     -- ยอดเดียวของรายการ (null = ยังไม่กรอก)
   installment_no     int,                                 -- สินเชื่อ: งวดที่เท่าไหร่
-  planned_amount     bigint generated always as (
-                       case
-                         when kind = 'card' and pay_plan = 'minimum' then minimum_amount
-                         when kind = 'card' and pay_plan = 'custom'  then custom_amount
-                         else amount
-                       end) stored,                         -- ยอดที่ใช้คำนวณ "คงเหลือ (แผน)"
   due_date           date,
   status             item_status not null default 'pending',
   done_at            timestamptz,
-  paid_amount        bigint check (paid_amount >= 0),     -- ยอดจริงที่จ่าย/รับ (null = ใช้ planned_amount)
+  paid_amount        bigint check (paid_amount >= 0),     -- ยอดจริงที่จ่าย/รับ (null = ใช้ amount)
   source_request_id  uuid,                                -- ถ้ามาจากการยืนยันยอดเรียกเก็บ (FK เพิ่มทีหลัง)
   note               text,
   position           int not null default 0,
@@ -168,7 +158,6 @@ create table items (
 
   check ((kind in ('card', 'loan')) = (debt_account_id is not null)),
   check ((kind = 'expense') = (category is not null)),
-  check (kind = 'card' or (minimum_amount is null and pay_plan is null and custom_amount is null)),
   check (kind = 'loan' or installment_no is null)
 );
 
@@ -220,7 +209,6 @@ create table shares (
 **ยอดตั้งต้น (target) ของกฎ**
 - กฎระดับรายการย่อย ใช้ `sub_items.amount`
 - กฎระดับรายการ ใช้ **ยอดที่ยังไม่แจกแจง** (`items.amount − Σ sub_items.amount`) เพื่อไม่ให้นับซ้ำกับกฎของรายการย่อย ถ้ารายการไม่มีรายการย่อย target ก็คือ `items.amount`
-- คิดจาก `amount` (ยอดเต็ม) ไม่คิดจาก `planned_amount` (business ข้อ 15 #1)
 
 **วิธีคำนวณ** (ทำใน function `recompute_split(rule_id)` เท่านั้น)
 
@@ -355,14 +343,13 @@ where c.owner_id = m.owner_id
 
 | คอลัมน์ | สูตร |
 |---|---|
-| `income_own` | Σ `planned_amount` ของ `kind = 'income'` |
+| `income_own` | Σ `amount` ของ `kind = 'income'` |
 | `from_people` | Σ `net` ที่ > 0 |
 | `to_people` | Σ `|net|` ที่ < 0 |
-| `expense_plan` | Σ `planned_amount` ของบัตร, สินเชื่อ, รายจ่าย |
-| `expense_if_full` / `expense_if_minimum` | เหมือน `expense_plan` แต่บังคับให้บัตรใช้ `amount` หรือ `minimum_amount` |
-| `balance_plan` / `balance_if_full` / `balance_if_minimum` | `income_own + from_people − expense_* − to_people` |
-| `balance_actual` | รายรับที่ `done` + ยอดเรียกเก็บที่ `received` − รายจ่ายที่ `done` (ใช้ `coalesce(paid_amount, planned_amount)`) |
-| `missing_plan` / `missing_if_full` / `missing_if_minimum` | จำนวนรายการที่ยอดของแต่ละแบบยังเป็น `null` ถ้า > 0 UI ต้องแสดง "⚠️ ยังไม่รวม…" |
+| `expense_total` | Σ `amount` ของบัตร, สินเชื่อ, รายจ่าย |
+| `balance` | `income_own + from_people − expense_total − to_people` |
+| `balance_actual` | รายรับที่ `done` + ยอดเรียกเก็บที่ `received` − รายจ่ายที่ `done` (ใช้ `coalesce(paid_amount, amount)`) |
+| `missing_count` | จำนวนรายการที่ `amount` ยังเป็น `null` ถ้า > 0 UI ต้องแสดง "⚠️ ยังไม่รวม…" |
 | `savings_total` | Σ รายจ่าย `category = 'savings'` |
 | `done_count` / `total_count` | ความคืบหน้า (นับ items + ยอดเรียกเก็บของเดือน) |
 
@@ -408,7 +395,7 @@ where c.owner_id = m.owner_id
 | kind | ค่าที่คัดลอก | เงื่อนไขการเสนอ |
 |---|---|---|
 | `loan` | `amount = installment_amount`, `installment_no + 1`, `due_date` เลื่อน 1 เดือน | ไม่เสนอถ้า `installment_no = total_installments` (ผ่อนครบแล้ว) |
-| `card` | ชื่อ, บัญชี, `pay_plan`, `due_date` เลื่อน 1 เดือน, `amount`/`minimum_amount`/`custom_amount` เป็น `null` | เสนอทุกใบที่ยังไม่ archive |
+| `card` | ชื่อ, บัญชี, `due_date` เลื่อน 1 เดือน, `amount` เป็น `null` | เสนอทุกใบที่ยังไม่ archive |
 | `expense` / `income` | ชื่อ, หมวด, `amount` | เสนอเฉพาะ `recurring = true` |
 | `split_rules` | กฎและ shares ของรายการที่ถูกคัดลอก | เฉพาะ `recurring = true` และเป็นกฎระดับรายการ |
 | อื่น ๆ | `status = 'pending'`, ไม่คัดลอกรายการย่อย, หักกลบ และยอดเรียกเก็บ | |
@@ -468,6 +455,7 @@ src/
 4. ✅ **Migration 4** (`20261029152223_payment_requests.sql`): payment_requests, request_lines, request_events, notifications + RPC ข้อ 6.2 + `month_open_requests` + Realtime + `balance_actual` นับยอดที่ได้รับจากคน
    - ข้อจำกัด: 1 คนต่อ 1 เดือนมีได้แค่ 1 ใบที่ยังไม่ถูกยกเลิก ถ้าได้รับเงินแล้วมียอดเพิ่มทีหลัง ต้องลงในเดือนถัดไป
 5. ✅ **Migration 5** (`20261029160000_due_reminders.sql`): `create_due_notifications` + pg_cron ทุกวัน 08:00 (Asia/Bangkok) ส่งแจ้งเตือน `due_soon` รายการละครั้งเดียว
-6. **Seed**: ข้อมูลเดือนตุลาคมจากชีต1 ใช้ทดสอบว่าได้ 35,368.52 / −4,686.48 (business ข้อ 13.1)
+6. ✅ **Migration 6** (`20261029170000_single_amount.sql`): ตัดยอดเต็ม/ขั้นต่ำ/แผนการจ่ายของบัตร ใช้ `amount` อย่างเดียว
+7. ✅ **Seed** (`supabase/seed.sql`): user ทดลอง `frong@tallo.local`, `ball@tallo.local`, `chompoo@tallo.local` (รหัส `password123`) + เดือนตุลาคม 2026 ของ Frong จากชีต1 ยกเว้น 4 รายการ Chompoo / 2 ที่ต้องเพิ่มเป็นรายการย่อยในบัตรเอง (คงเหลือ −7,961.48 → −4,686.48 เมื่อเพิ่มครบ)
 
 แต่ละ migration มีเทสต์ SQL (pgTAP ผ่าน `supabase test db`) ครอบคลุมการปัดเศษของการแบ่ง, RLS ข้าม user และ state machine ของยอดเรียกเก็บ

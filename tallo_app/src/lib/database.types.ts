@@ -71,14 +71,14 @@ isOneToOne: false
                   ]
                 },"items": {
                   Row: {
-                    "amount": number | null,"category": Database["public"]['Enums']["expense_cat"] | null,"created_at": string,"custom_amount": number | null,"debt_account_id": string | null,"done_at": string | null,"due_date": string | null,"id": string,"installment_no": number | null,"kind": Database["public"]['Enums']["item_kind"],"minimum_amount": number | null,"month_id": string,"name": string,"note": string | null,"owner_id": string,"paid_amount": number | null,"pay_plan": Database["public"]['Enums']["pay_plan"] | null,"planned_amount": number | null,"position": number,"recurring": boolean,"source_request_id": string | null,"status": Database["public"]['Enums']["item_status"],"updated_at": string
+                    "amount": number | null,"category": Database["public"]['Enums']["expense_cat"] | null,"created_at": string,"debt_account_id": string | null,"done_at": string | null,"due_date": string | null,"id": string,"installment_no": number | null,"kind": Database["public"]['Enums']["item_kind"],"month_id": string,"name": string,"note": string | null,"owner_id": string,"paid_amount": number | null,"position": number,"recurring": boolean,"source_request_id": string | null,"status": Database["public"]['Enums']["item_status"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "amount"?: number | null,"category"?: Database["public"]['Enums']["expense_cat"] | null,"created_at"?: string,"custom_amount"?: number | null,"debt_account_id"?: string | null,"done_at"?: string | null,"due_date"?: string | null,"id"?: string,"installment_no"?: number | null,"kind": Database["public"]['Enums']["item_kind"],"minimum_amount"?: number | null,"month_id": string,"name": string,"note"?: string | null,"owner_id"?: string,"paid_amount"?: number | null,"pay_plan"?: Database["public"]['Enums']["pay_plan"] | null,"planned_amount"?: never,"position"?: number,"recurring"?: boolean,"source_request_id"?: string | null,"status"?: Database["public"]['Enums']["item_status"],"updated_at"?: string
+                    "amount"?: number | null,"category"?: Database["public"]['Enums']["expense_cat"] | null,"created_at"?: string,"debt_account_id"?: string | null,"done_at"?: string | null,"due_date"?: string | null,"id"?: string,"installment_no"?: number | null,"kind": Database["public"]['Enums']["item_kind"],"month_id": string,"name": string,"note"?: string | null,"owner_id"?: string,"paid_amount"?: number | null,"position"?: number,"recurring"?: boolean,"source_request_id"?: string | null,"status"?: Database["public"]['Enums']["item_status"],"updated_at"?: string
                   }
                   Update: {
-                    "amount"?: number | null,"category"?: Database["public"]['Enums']["expense_cat"] | null,"created_at"?: string,"custom_amount"?: number | null,"debt_account_id"?: string | null,"done_at"?: string | null,"due_date"?: string | null,"id"?: string,"installment_no"?: number | null,"kind"?: Database["public"]['Enums']["item_kind"],"minimum_amount"?: number | null,"month_id"?: string,"name"?: string,"note"?: string | null,"owner_id"?: string,"paid_amount"?: number | null,"pay_plan"?: Database["public"]['Enums']["pay_plan"] | null,"planned_amount"?: never,"position"?: number,"recurring"?: boolean,"source_request_id"?: string | null,"status"?: Database["public"]['Enums']["item_status"],"updated_at"?: string
+                    "amount"?: number | null,"category"?: Database["public"]['Enums']["expense_cat"] | null,"created_at"?: string,"debt_account_id"?: string | null,"done_at"?: string | null,"due_date"?: string | null,"id"?: string,"installment_no"?: number | null,"kind"?: Database["public"]['Enums']["item_kind"],"month_id"?: string,"name"?: string,"note"?: string | null,"owner_id"?: string,"paid_amount"?: number | null,"position"?: number,"recurring"?: boolean,"source_request_id"?: string | null,"status"?: Database["public"]['Enums']["item_status"],"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -550,7 +550,7 @@ isOneToOne: false
                   ]
                 },"month_summaries": {
                   Row: {
-                    "balance_actual": number | null,"balance_if_full": number | null,"balance_if_minimum": number | null,"balance_plan": number | null,"done_count": number | null,"expense_if_full": number | null,"expense_if_minimum": number | null,"expense_plan": number | null,"from_people": number | null,"income_own": number | null,"missing_if_full": number | null,"missing_if_minimum": number | null,"missing_plan": number | null,"month": number | null,"month_id": string | null,"savings_total": number | null,"status": Database["public"]['Enums']["month_status"] | null,"to_people": number | null,"total_count": number | null,"year": number | null
+                    "balance": number | null,"balance_actual": number | null,"done_count": number | null,"expense_total": number | null,"from_people": number | null,"income_own": number | null,"missing_count": number | null,"month": number | null,"month_id": string | null,"savings_total": number | null,"status": Database["public"]['Enums']["month_status"] | null,"to_people": number | null,"total_count": number | null,"year": number | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -881,7 +881,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "expense_cat": "spending"|"subscription"|"savings"|"pay_person","item_kind": "card"|"loan"|"expense"|"income","item_status": "pending"|"done","month_status": "draft"|"active"|"closed","pay_plan": "full"|"minimum"|"custom","request_status": "draft"|"sent"|"questioned"|"accepted"|"paid"|"received"|"cancelled","split_mode": "equal"|"ratio"|"fixed"
+            "expense_cat": "spending"|"subscription"|"savings"|"pay_person","item_kind": "card"|"loan"|"expense"|"income","item_status": "pending"|"done","month_status": "draft"|"active"|"closed","request_status": "draft"|"sent"|"questioned"|"accepted"|"paid"|"received"|"cancelled","split_mode": "equal"|"ratio"|"fixed"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -997,7 +997,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            "expense_cat": ["spending", "subscription", "savings", "pay_person"],"item_kind": ["card", "loan", "expense", "income"],"item_status": ["pending", "done"],"month_status": ["draft", "active", "closed"],"pay_plan": ["full", "minimum", "custom"],"request_status": ["draft", "sent", "questioned", "accepted", "paid", "received", "cancelled"],"split_mode": ["equal", "ratio", "fixed"]
+            "expense_cat": ["spending", "subscription", "savings", "pay_person"],"item_kind": ["card", "loan", "expense", "income"],"item_status": ["pending", "done"],"month_status": ["draft", "active", "closed"],"request_status": ["draft", "sent", "questioned", "accepted", "paid", "received", "cancelled"],"split_mode": ["equal", "ratio", "fixed"]
           }
         }
 } as const

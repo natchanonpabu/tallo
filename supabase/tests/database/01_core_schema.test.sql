@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(22);
 
 -- Fixtures (as postgres) --------------------------------------------------------
 
@@ -29,29 +29,25 @@ set local request.jwt.claims to '{"sub": "11111111-1111-1111-1111-111111111111",
 insert into public.months (year, month) values (2026, 10);
 insert into public.debt_accounts (kind, name) values ('card', 'KTC');
 
-insert into public.items (month_id, kind, debt_account_id, name, amount, minimum_amount, pay_plan)
-select m.id, 'card', d.id, 'KTC', 1237400, 120000, 'minimum'
+insert into public.items (month_id, kind, debt_account_id, name, amount)
+select m.id, 'card', d.id, 'KTC', 1237400
 from public.months m, public.debt_accounts d
 where m.month = 10;
 
-select is((select planned_amount from public.items where name = 'KTC'), 120000::bigint,
-          'planned amount follows the minimum plan');
-update public.items set pay_plan = 'custom' where name = 'KTC';
-select is((select planned_amount from public.items where name = 'KTC'), null::bigint,
-          'custom plan without an amount stays null (not filled in)');
-update public.items set pay_plan = 'full' where name = 'KTC';
-select is((select planned_amount from public.items where name = 'KTC'), 1237400::bigint,
-          'planned amount follows the full plan');
+select lives_ok(
+  $$ insert into public.items (month_id, kind, debt_account_id, name)
+     select m.id, 'card', d.id, 'Not filled' from public.months m, public.debt_accounts d where m.month = 10 $$,
+  'a card can be added before its amount is known');
 
 insert into public.sub_items (item_id, name, amount)
 select id, 'P''Ball', 805000 from public.items where name = 'KTC';
-select is((select unallocated from public.item_totals), 432400::bigint,
+select is((select unallocated from public.item_totals t join public.items i on i.id = t.item_id where i.name = 'KTC'), 432400::bigint,
           'unallocated is item amount minus sub-items');
 
 select throws_ok(
-  $$ insert into public.items (month_id, kind, debt_account_id, name)
-     select m.id, 'card', d.id, 'No plan' from public.months m, public.debt_accounts d where m.month = 10 $$,
-  '23514', null, 'a card needs a pay plan');
+  $$ insert into public.items (month_id, kind, name, amount)
+     select id, 'card', 'No account', 1 from public.months where month = 10 $$,
+  '23514', null, 'a card needs a debt account');
 select throws_ok(
   $$ insert into public.items (month_id, kind, name, amount)
      select id, 'expense', 'Shopee', 328800 from public.months where month = 10 $$,

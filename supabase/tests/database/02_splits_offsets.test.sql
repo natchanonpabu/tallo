@@ -18,17 +18,17 @@ insert into public.contacts (id, owner_id, name) values
 insert into public.debt_accounts (id, owner_id, kind, name) values
   ('d0000000-0000-0000-0000-00000000047c', '11111111-1111-1111-1111-111111111111', 'card', 'KTC');
 
-insert into public.items (id, owner_id, month_id, kind, debt_account_id, category, name, amount, pay_plan) values
-  ('10000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'card', 'd0000000-0000-0000-0000-00000000047c', null, 'KTC', 1237400, 'full'),
-  ('10000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Food', 177100, null),
-  ('10000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', '7 Eleven', 135800, null),
-  ('10000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Fortuner', 297400, null),
-  ('10000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Dumbell', 44700, null),
-  ('10000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'subscription', 'Youtube', 19800, null),
-  ('10000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Odd', 101, null),
-  ('10000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', '60/40', 1000, null),
-  ('10000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Thirds', 100, null),
-  ('10000000-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'income', null, null, 'Salary', 5335000, null);
+insert into public.items (id, owner_id, month_id, kind, debt_account_id, category, name, amount) values
+  ('10000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'card', 'd0000000-0000-0000-0000-00000000047c', null, 'KTC', 1237400),
+  ('10000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Food', 177100),
+  ('10000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', '7 Eleven', 135800),
+  ('10000000-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Fortuner', 297400),
+  ('10000000-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Dumbell', 44700),
+  ('10000000-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'subscription', 'Youtube', 19800),
+  ('10000000-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Odd', 101),
+  ('10000000-0000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', '60/40', 1000),
+  ('10000000-0000-0000-0000-000000000009', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', null, 'spending', 'Thirds', 100),
+  ('10000000-0000-0000-0000-000000000010', '11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'income', null, null, 'Salary', 5335000);
 
 insert into public.sub_items (id, owner_id, item_id, name, amount) values
   ('50000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', '10000000-0000-0000-0000-000000000001', 'P''Ball part', 805000);
