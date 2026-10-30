@@ -9,6 +9,8 @@ const messages: Record<string, string> = {
   invite_not_found: "ไม่พบโค้ดนี้ หรือโค้ดถูกใช้ไปแล้ว",
   already_linked: "บัญชีของเราผูกกับคนนี้อยู่แล้ว",
   contact_already_linked: "คนนี้ผูกบัญชีแล้ว",
+  contact_in_use: "คนนี้มีข้อมูลอยู่ ต้องยืนยันการลบข้อมูลด้วย",
+  contact_in_closed_month: "คนนี้มีข้อมูลในเดือนที่ปิดแล้ว ลบไม่ได้ ใช้ \"เก็บคนนี้\" แทน หรือเปิดเดือนนั้นก่อน",
   net_is_zero: "ยอดสุทธิเป็นศูนย์ ไม่มีอะไรให้ส่ง",
   cannot_link_self: "ใช้โค้ดของตัวเองไม่ได้",
   cannot_split_income: "รายรับแบ่งยอดไม่ได้",

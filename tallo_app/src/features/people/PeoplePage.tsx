@@ -1,6 +1,6 @@
 import { useActionState, useState } from "react"
 import { toast } from "sonner"
-import { CheckCircle, Copy, LinkBreak, PencilSimple, Plus } from "@phosphor-icons/react"
+import { CheckCircle, Copy, LinkBreak, PencilSimple, Plus, Trash } from "@phosphor-icons/react"
 
 import { ContactChip, EmptyState, Field, FormError } from "@/components/bits"
 import {
@@ -105,65 +105,113 @@ export function PeoplePage() {
 
 const NEW_CONTACT = "__new__"
 
-/** The invited side: enter the code someone sent us. */
+/**
+ * The invited side: enter the code someone sent us, see who it is from, then pick who that is in
+ * our own list (so we don't end up with a duplicate contact).
+ */
 function JoinWithCode({ contacts, onJoined }: { contacts: Contact[]; onJoined: () => void }) {
   const unlinked = contacts.filter((c) => !c.linked_user_id && !c.archived_at)
-  const [asContact, setAsContact] = useState(NEW_CONTACT)
+  const [code, setCode] = useState("")
+  const [inviter, setInviter] = useState<{ name: string; color: string } | null>(null)
+  const [asContact, setAsContact] = useState("")
+  const [error, setError] = useState<string>()
+  const [pending, setPending] = useState(false)
 
-  const [state, formAction, pending] = useActionState<{ error?: string }, FormData>(async (_prev, formData) => {
+  function reset() {
+    setCode("")
+    setInviter(null)
+    setAsContact("")
+    setError(undefined)
+  }
+
+  const [, peekAction, peeking] = useActionState<null, FormData>(async () => {
+    setError(undefined)
+    try {
+      const rows = must(await supabase.rpc("peek_contact_invite", { p_code: code }))
+      const found = rows[0]
+      setInviter({ name: found.inviter_name, color: found.inviter_color })
+      const sameName = unlinked.find((c) => c.name.trim().toLowerCase() === found.inviter_name.trim().toLowerCase())
+      setAsContact(sameName?.id ?? (unlinked.length ? "" : NEW_CONTACT))
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+    return null
+  }, null)
+
+  async function join() {
+    setPending(true)
     try {
       const mine = must(
         await supabase.rpc("accept_contact_invite", {
-          p_code: String(formData.get("code") ?? ""),
+          p_code: code,
           p_my_contact_id: asContact === NEW_CONTACT ? undefined : asContact,
         }),
       )
       toast.success(`ผูกบัญชีกับ ${mine.name} แล้ว`)
-      setAsContact(NEW_CONTACT)
+      reset()
       onJoined()
-      return {}
-    } catch (error) {
-      return { error: errorMessage(error) }
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setPending(false)
     }
-  }, {})
+  }
 
   return (
     <section className="rounded-3xl bg-secondary p-5 text-secondary-foreground">
       <p className="font-semibold">มีโค้ดจากเพื่อนไหม?</p>
       <p className="text-sm">ใส่โค้ด 8 ตัวที่เพื่อนส่งมา เพื่อผูกบัญชีกัน แล้วจะส่งยอดให้กันดูในแอปได้</p>
-      <form action={formAction} className="mt-3 grid gap-3">
-        <div className="flex gap-2">
+
+      {!inviter ? (
+        <form action={peekAction} className="mt-3 flex gap-2">
           <Input
-            name="code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
             required
             maxLength={8}
             placeholder="ABCD2345"
             aria-label="โค้ดจากเพื่อน"
             className="bg-card text-center font-mono tracking-widest uppercase"
           />
-          <Button type="submit" disabled={pending}>
-            ผูกบัญชี
+          <Button type="submit" disabled={peeking}>
+            ถัดไป
           </Button>
-        </div>
-        {unlinked.length > 0 && (
-          <Field label="คนนี้คือใครในรายชื่อของเรา" controlId="join-as">
+        </form>
+      ) : (
+        <div className="mt-3 grid gap-3">
+          <p className="flex items-center gap-2 text-sm">
+            โค้ดนี้มาจาก <ContactChip name={inviter.name} color={inviter.color} className="text-sm" />
+          </p>
+          <Field label={`${inviter.name} คือใครในรายชื่อของเรา`} controlId="join-as">
             <Select value={asContact} onValueChange={setAsContact}>
               <SelectTrigger id="join-as" className="w-full bg-card">
-                <SelectValue />
+                <SelectValue placeholder="เลือกคนในรายชื่อ" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NEW_CONTACT}>เพิ่มเป็นคนใหม่</SelectItem>
                 {unlinked.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
                   </SelectItem>
                 ))}
+                <SelectItem value={NEW_CONTACT}>ยังไม่มีในรายชื่อ — เพิ่มเป็นคนใหม่</SelectItem>
               </SelectContent>
             </Select>
           </Field>
-        )}
-        <FormError message={state.error} />
-      </form>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={reset}>
+              ยกเลิก
+            </Button>
+            <Button type="button" disabled={!asContact || pending} onClick={() => void join()}>
+              ผูกบัญชี
+            </Button>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="mt-3">
+          <FormError message={error} />
+        </div>
+      )}
     </section>
   )
 }
@@ -182,6 +230,40 @@ function ContactDialog({
   const [color, setColor] = useState(contact?.color ?? CONTACT_COLORS[0])
   const [inviteCode, setInviteCode] = useState<string | null>(contact?.invite_code ?? null)
   const [confirmUnlink, setConfirmUnlink] = useState(false)
+  // null = not asking; otherwise what deleting this person would also remove.
+  const [deleteUsage, setDeleteUsage] = useState<string[] | null>(null)
+
+  async function askDelete() {
+    if (!contact) return
+    try {
+      const [shares, offsets, settlements, requests] = await Promise.all([
+        supabase.from("shares").select("month_id").eq("contact_id", contact.id).then(must),
+        supabase.from("offsets").select("month_id").eq("contact_id", contact.id).then(must),
+        supabase.from("settlements").select("id").eq("contact_id", contact.id).then(must),
+        supabase.from("payment_requests").select("id").eq("sender_contact_id", contact.id).then(must),
+      ])
+      const months = new Set([...shares, ...offsets].map((r) => r.month_id)).size
+      const usage = [
+        shares.length && `ส่วนแบ่ง ${shares.length} รายการ`,
+        offsets.length && `หักกลบ ${offsets.length} รายการ`,
+        settlements.length && `การติ๊กว่าเคลียร์แล้ว ${settlements.length} ครั้ง`,
+        requests.length && `ยอดที่ส่งให้ดู ${requests.length} ครั้ง`,
+      ].filter((x): x is string => !!x)
+      if (usage.length && months) usage.push(`(ใน ${months} เดือน)`)
+      setDeleteUsage(usage)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  async function doDelete() {
+    if (!contact) return
+    const removed = await act(
+      () => supabase.rpc("delete_contact", { p_contact_id: contact.id, p_force: true }),
+      `ลบ ${contact.name} แล้ว`,
+    )
+    if (removed !== null) onClose()
+  }
 
   const [state, formAction, pending] = useActionState<{ error?: string }, FormData>(async (_prev, formData) => {
     const name = String(formData.get("name") ?? "").trim()
@@ -313,10 +395,50 @@ function ContactDialog({
               >
                 {contact.archived_at ? "กู้คืนคนนี้" : "เก็บคนนี้ (ซ่อนจากการแบ่งยอด)"}
               </Button>
+              <Button
+                variant="ghost"
+                className="-mt-3 justify-self-start text-destructive"
+                onClick={() => void askDelete()}
+              >
+                <Trash weight="light" data-icon="inline-start" /> ลบคนนี้
+              </Button>
             </>
           )}
         </DialogContent>
       </Dialog>
+
+      {contact && deleteUsage && (
+        <AlertDialog open onOpenChange={(o) => !o && setDeleteUsage(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>ลบ {contact.name}?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="grid gap-2">
+                  {deleteUsage.length === 0 ? (
+                    <p>{contact.name} ยังไม่มีข้อมูลในเดือนไหน ลบได้เลย</p>
+                  ) : (
+                    <>
+                      <p>ข้อมูลของ {contact.name} จะถูกลบไปด้วย และยอดของเดือนเหล่านั้นจะเปลี่ยน:</p>
+                      <ul className="list-disc pl-5">
+                        {deleteUsage.map((u) => (
+                          <li key={u}>{u}</li>
+                        ))}
+                      </ul>
+                      <p>ถ้าแค่ไม่อยากเห็นในรายชื่อ ใช้ "เก็บคนนี้" แทนได้ ข้อมูลเดิมจะอยู่ครบ</p>
+                    </>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>ไม่ลบ</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={() => void doDelete()}>
+                ลบ
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {contact && confirmUnlink && (
         <AlertDialog open onOpenChange={setConfirmUnlink}>

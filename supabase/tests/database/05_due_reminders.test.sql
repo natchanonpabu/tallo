@@ -21,18 +21,28 @@ insert into public.items (owner_id, month_id, kind, category, name, amount, due_
   ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'income',  null,       'Salary',       100, '2026-10-21', 'pending'),
   ('22222222-2222-2222-2222-222222222222', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'expense', 'spending', 'Ball bill',    100, '2026-10-21', 'pending');
 
-select is(public.create_due_notifications('2026-10-20'), 2, 'two items fall in the 3-day window');
+-- Other users' data may exist in a dev database, so only count notifications of the test users.
+create temp view test_due as
+  select * from public.notifications
+  where type = 'due_soon'
+    and user_id in ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');
+
+select public.create_due_notifications('2026-10-20');
+select is((select count(*) from test_due), 2::bigint, 'two items fall in the 3-day window');
 select results_eq(
-  $$ select data ->> 'name', (data ->> 'days_left')::int from public.notifications order by data ->> 'name' $$,
+  $$ select data ->> 'name', (data ->> 'days_left')::int from test_due order by data ->> 'name' $$,
   $$ values ('Due in 3', 3), ('Due today', 0) $$,
   'only pending, non-income items within the window, for users who want reminders');
-select is(public.create_due_notifications('2026-10-20'), 0, 'running again does not duplicate');
-select is(public.create_due_notifications('2026-10-21'), 1, 'the next day picks up the newly due item');
+select public.create_due_notifications('2026-10-20');
+select is((select count(*) from test_due), 2::bigint, 'running again does not duplicate');
+select public.create_due_notifications('2026-10-21');
+select is((select count(*) from test_due), 3::bigint, 'the next day picks up the newly due item');
 
 update public.profiles set due_remind_days = 0 where id = '11111111-1111-1111-1111-111111111111';
 insert into public.items (owner_id, month_id, kind, category, name, amount, due_date) values
   ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'expense', 'spending', 'Tomorrow', 100, '2026-10-22');
-select is(public.create_due_notifications('2026-10-21'), 0, 'due_remind_days = 0 only reminds on the day');
+select public.create_due_notifications('2026-10-21');
+select is((select count(*) from test_due), 3::bigint, 'due_remind_days = 0 only reminds on the day');
 
 select is((select count(*) from cron.job where jobname = 'tallo-due-reminders'), 1::bigint, 'the daily job is scheduled');
 

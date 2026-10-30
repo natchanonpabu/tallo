@@ -722,6 +722,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"delete_contact":
+{ Args: { "p_contact_id": string,"p_force"?: boolean }; Returns: undefined
+                           },
 "generate_friend_code":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
@@ -763,6 +766,11 @@ isOneToOne: false
                            },
 "notify":
 { Args: { "p_actor_id": string,"p_data"?: Json,"p_item_id": string,"p_request_id": string,"p_type": string,"p_user_id": string }; Returns: undefined
+                           },
+"peek_contact_invite":
+{ Args: { "p_code": string }; Returns: {
+              "inviter_color": string,"inviter_name": string
+            }[]
                            },
 "recompute_split":
 { Args: { "p_rule_id": string }; Returns: undefined

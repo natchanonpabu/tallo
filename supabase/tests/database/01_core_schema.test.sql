@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(28);
 
 -- Fixtures (as postgres) --------------------------------------------------------
 
@@ -78,6 +78,8 @@ set local request.jwt.claims to '{"sub": "22222222-2222-2222-2222-222222222222",
 
 select throws_ok($$ select public.accept_contact_invite('NOPE2345') $$,
                  'P0002', 'invite_not_found', 'unknown invite code is rejected');
+select is((select inviter_name from public.peek_contact_invite((select code from invite))), 'Frong',
+          'peeking shows who the invite comes from');
 select results_eq(
   $$ select name, linked_user_id from public.accept_contact_invite((select lower(code) from invite)) $$,
   $$ values ('Frong', '11111111-1111-1111-1111-111111111111'::uuid) $$,
