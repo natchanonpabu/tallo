@@ -28,7 +28,8 @@ export function errorMessage(error: unknown): string {
     const { message, code } = error as { message?: string; code?: string }
     if (message && messages[message]) return messages[message]
     if (code === "23505") return "มีข้อมูลนี้อยู่แล้ว"
-    if (code === "42501") return "ไม่มีสิทธิ์ทำรายการนี้"
+    if (code === "42501") return "ไม่มีสิทธิ์ทำรายการนี้ ถ้าเพิ่ง reset ข้อมูล ให้ออกจากระบบแล้วเข้าใหม่"
+    if (code === "23503" && message?.includes("profiles")) return "บัญชีนี้ไม่มีอยู่แล้ว กรุณาออกจากระบบแล้วเข้าใหม่"
     if (message) return message
   }
   return "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง"
