@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { SplitTarget } from "@/features/month/SplitDialog"
 import { splitKey, type SplitInfo } from "@/features/month/use-month-data"
+import { dueLabel, type DueState } from "@/lib/due"
 import { CATEGORY_LABELS } from "@/lib/labels"
 import type { Contact, Item, SubItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -58,6 +59,7 @@ export function ItemRow({
   contactById,
   unallocated,
   locked,
+  due,
   selecting,
   selected,
   actions,
@@ -68,6 +70,7 @@ export function ItemRow({
   contactById: Map<string, Contact>
   unallocated: number
   locked: boolean
+  due: DueState
   selecting: boolean
   selected: Set<string>
   actions: ItemRowActions
@@ -84,7 +87,14 @@ export function ItemRow({
   }
 
   return (
-    <li className={cn("rounded-2xl bg-card shadow-sm", done && "opacity-75")}>
+    <li
+      className={cn(
+        "rounded-2xl bg-card shadow-sm",
+        done && "opacity-75",
+        due?.kind === "overdue" && "ring-2 ring-danger",
+        due?.kind === "soon" && "ring-2 ring-warning",
+      )}
+    >
       <div className="flex items-center gap-2 p-3">
         {selecting && splittable ? (
           <Checkbox
@@ -119,6 +129,16 @@ export function ItemRow({
             {item.category && item.category !== "spending" && <span>{CATEGORY_LABELS[item.category]}</span>}
             {item.due_date && (
               <span>ครบ {new Date(item.due_date).toLocaleDateString("th-TH", { day: "numeric", month: "short" })}</span>
+            )}
+            {due && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 font-medium",
+                  due.kind === "overdue" ? "bg-danger text-danger-foreground" : "bg-warning text-warning-foreground",
+                )}
+              >
+                {dueLabel(due)}
+              </span>
             )}
             <SplitChips split={itemSplit} contactById={contactById} />
             {subs.some((s) => splits.has(splitKey(item.id, s.id))) && (

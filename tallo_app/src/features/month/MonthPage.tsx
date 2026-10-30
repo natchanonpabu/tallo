@@ -43,6 +43,8 @@ import { PeopleSection, type PeopleActions } from "@/features/month/PeopleSectio
 import { SplitDialog, type SplitTarget } from "@/features/month/SplitDialog"
 import { SubItemDialog } from "@/features/month/SubItemDialog"
 import { splitKey, useMonthData } from "@/features/month/use-month-data"
+import { useAuth } from "@/lib/auth-context"
+import { dueState } from "@/lib/due"
 import { errorMessage, must } from "@/lib/errors"
 import { monthLabel } from "@/lib/labels"
 import { formatBaht } from "@/lib/money"
@@ -69,6 +71,8 @@ export function MonthPage() {
   const { monthId = "" } = useParams()
   const navigate = useNavigate()
   const { data, derived, loading, error, reload } = useMonthData(monthId)
+  const { profile } = useAuth()
+  const remindDays = profile?.due_remind_days ?? 3
   const [dialog, setDialog] = useState<DialogState>(null)
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Map<string, SplitTarget>>(new Map())
@@ -102,6 +106,9 @@ export function MonthPage() {
   const total = summary?.total_count ?? 0
   const balance = summary?.balance ?? 0
   const nextPosition = (data.items.at(-1)?.position ?? 0) + 1
+  const dues = data.items.map((i) => dueState(i, remindDays))
+  const overdueCount = dues.filter((d) => d?.kind === "overdue").length
+  const soonCount = dues.filter((d) => d?.kind === "soon").length
 
   const itemActions: ItemRowActions = {
     onToggleDone: (item) =>
@@ -273,6 +280,19 @@ export function MonthPage() {
         <p className={cn("text-4xl font-bold tabular-nums", balance < 0 && "text-destructive")}>
           {formatBaht(balance)}
         </p>
+        {(overdueCount > 0 || soonCount > 0) && (
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
+            <Warning weight="fill" className="size-4 text-danger-foreground" />
+            {overdueCount > 0 && (
+              <span className="rounded-full bg-danger px-2 text-danger-foreground">เลยกำหนด {overdueCount} รายการ</span>
+            )}
+            {soonCount > 0 && (
+              <span className="rounded-full bg-warning px-2 text-warning-foreground">
+                ใกล้ครบกำหนด {soonCount} รายการ
+              </span>
+            )}
+          </p>
+        )}
         {(summary?.missing_count ?? 0) > 0 && (
           <p className="mt-1 flex items-center gap-1 text-sm text-warning-foreground">
             <Warning weight="fill" className="size-4" />
@@ -365,6 +385,7 @@ export function MonthPage() {
                     contactById={derived.contactById}
                     unallocated={derived.unallocated(item)}
                     locked={locked}
+                    due={dueState(item, remindDays)}
                     selecting={selecting}
                     selected={new Set(selected.keys())}
                     actions={itemActions}
