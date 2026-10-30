@@ -52,9 +52,9 @@ export function OffsetDialog({
           <DialogDescription>ยอดที่เราติดเขาอยู่แล้ว (เช่น เขาจ่ายแทนเรา) จะถูกหักออกจากยอดที่เขาต้องจ่ายเรา</DialogDescription>
         </DialogHeader>
         <form action={formAction} className="grid gap-4">
-          <Field label="คน">
+          <Field label="คน" controlId="offset-contact">
             <Select value={who} onValueChange={setWho}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="offset-contact" className="w-full">
                 <SelectValue placeholder="เลือกคน" />
               </SelectTrigger>
               <SelectContent>

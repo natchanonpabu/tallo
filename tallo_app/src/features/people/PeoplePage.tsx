@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useAuth } from "@/lib/auth-context"
 import { errorMessage, must } from "@/lib/errors"
 import { CONTACT_COLORS } from "@/lib/labels"
@@ -124,20 +125,19 @@ function AddContactDialog({ onClose, onSaved }: { onClose: () => void; onSaved: 
           <Field label="ชื่อที่เราเรียก">
             <Input name="name" required autoFocus placeholder="เช่น P'Ball" />
           </Field>
-          <div className="grid gap-1.5 text-sm">
+          <div className="grid gap-2 text-sm">
             <span className="font-medium">สี</span>
-            <div className="flex gap-2">
+            <ToggleGroup type="single" value={color} onValueChange={(v) => v && setColor(v)} className="justify-start">
               {CONTACT_COLORS.map((c) => (
-                <button
+                <ToggleGroupItem
                   key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
+                  value={c}
                   aria-label={`สี ${c}`}
-                  className={cn("size-8 rounded-full ring-offset-2", color === c && "ring-2 ring-ring")}
+                  className="size-9 rounded-full p-0 data-[state=on]:ring-2 data-[state=on]:ring-ring data-[state=on]:ring-offset-2"
                   style={{ backgroundColor: c }}
                 />
               ))}
-            </div>
+            </ToggleGroup>
           </div>
           <FormError message={state.error} />
           <DialogFooter>

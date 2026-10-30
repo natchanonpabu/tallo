@@ -2,9 +2,9 @@ import { useActionState, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { ChatCircle } from "@phosphor-icons/react"
 
-import { EmptyState, FormError, Money } from "@/components/bits"
+import { CheckboxField, EmptyState, FormError, Money } from "@/components/bits"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -40,6 +40,7 @@ async function loadRequests(): Promise<Loaded> {
 }
 
 const ACTIVE = ["sent", "questioned", "accepted"]
+const ALL_LINES = "all"
 
 export function RequestsPage() {
   const { session } = useAuth()
@@ -213,7 +214,7 @@ function CommentForm({
   onSent: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [lineId, setLineId] = useState("")
+  const [lineId, setLineId] = useState(ALL_LINES)
   const [question, setQuestion] = useState(canAsk)
 
   const [state, formAction, pending] = useActionState<{ error?: string }, FormData>(async (_prev, formData) => {
@@ -222,7 +223,7 @@ function CommentForm({
         await supabase.rpc("comment_request", {
           p_request_id: requestId,
           p_message: String(formData.get("message") ?? ""),
-          p_line_id: lineId || undefined,
+          p_line_id: lineId === ALL_LINES ? undefined : lineId,
           p_is_question: canAsk && question,
         }),
       )
@@ -245,26 +246,23 @@ function CommentForm({
 
   return (
     <form action={formAction} className="mt-3 grid gap-2">
-      <select
-        value={lineId}
-        onChange={(e) => setLineId(e.target.value)}
-        className="h-9 rounded-xl border bg-transparent px-3 text-sm"
-        aria-label="เกี่ยวกับบรรทัด"
-      >
-        <option value="">ทั้งยอด</option>
-        {lines.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.group_label ? `${l.group_label} › ` : ""}
-            {l.label}
-          </option>
-        ))}
-      </select>
-      <Textarea name="message" required rows={2} placeholder="พิมพ์ข้อความ" />
+      <Select value={lineId} onValueChange={setLineId}>
+        <SelectTrigger className="w-full" aria-label="เกี่ยวกับบรรทัด">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_LINES}>ทั้งยอด</SelectItem>
+          {lines.map((l) => (
+            <SelectItem key={l.id} value={l.id}>
+              {l.group_label ? `${l.group_label} › ` : ""}
+              {l.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Textarea name="message" required rows={2} placeholder="พิมพ์ข้อความ" aria-label="ข้อความ" />
       {canAsk && (
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={question} onCheckedChange={(v) => setQuestion(v === true)} />
-          เป็นคำถาม (เปลี่ยนสถานะเป็น "มีคำถาม")
-        </label>
+        <CheckboxField label='เป็นคำถาม (เปลี่ยนสถานะเป็น "มีคำถาม")' checked={question} onCheckedChange={setQuestion} />
       )}
       <FormError message={state.error} />
       <div className="flex justify-end gap-2">

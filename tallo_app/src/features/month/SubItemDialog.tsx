@@ -1,6 +1,6 @@
 import { useActionState } from "react"
 
-import { Field, FormError, MoneyInput } from "@/components/bits"
+import { DatePicker, Field, FormError, MoneyInput } from "@/components/bits"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -61,12 +61,12 @@ export function SubItemDialog({
           <Field label="ชื่อ">
             <Input name="name" defaultValue={subItem?.name} required autoFocus placeholder="เช่น Food, Fortuner" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="ยอด (บาท)">
               <MoneyInput name="amount" defaultSatang={subItem?.amount} required />
             </Field>
             <Field label="วันที่">
-              <Input name="occurred_on" type="date" defaultValue={subItem?.occurred_on ?? ""} />
+              <DatePicker name="occurred_on" defaultValue={subItem?.occurred_on} />
             </Field>
           </div>
           <Field label="โน้ต">

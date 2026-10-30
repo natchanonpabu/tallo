@@ -1,9 +1,8 @@
 import { useActionState, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 
-import { Field, FormError, Money } from "@/components/bits"
+import { CheckboxField, Field, FormError, Money } from "@/components/bits"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { errorMessage, must } from "@/lib/errors"
@@ -101,9 +100,9 @@ export function CreateMonthDialog({
         </DialogHeader>
         <form action={formAction} className="grid gap-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="เดือน">
+            <Field label="เดือน" controlId="new-month-month">
               <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="new-month-month" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -115,9 +114,9 @@ export function CreateMonthDialog({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="ปี">
+            <Field label="ปี" controlId="new-month-year">
               <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="new-month-year" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -131,9 +130,9 @@ export function CreateMonthDialog({
             </Field>
           </div>
 
-          <Field label="คัดลอกจาก">
+          <Field label="คัดลอกจาก" controlId="new-month-copy">
             <Select value={copyFrom} onValueChange={setCopyFrom}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="new-month-copy" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -158,14 +157,19 @@ export function CreateMonthDialog({
               <ul className="mt-1 grid max-h-64 gap-1 overflow-y-auto rounded-2xl border p-2">
                 {candidates.map((c) => (
                   <li key={c.id}>
-                    <label className="flex items-center gap-3 rounded-xl px-2 py-1.5 text-sm hover:bg-muted">
-                      <Checkbox checked={picked.has(c.id)} onCheckedChange={(v) => toggle(c.id, v === true)} />
-                      <span className="flex-1">
-                        {c.name}
-                        <span className="ml-2 text-xs text-muted-foreground">{KIND_LABELS[c.kind]}</span>
-                      </span>
-                      <Money satang={c.kind === "card" ? null : c.amount} className="text-muted-foreground" />
-                    </label>
+                    <CheckboxField
+                      className="rounded-xl px-2 py-1.5 hover:bg-muted"
+                      checked={picked.has(c.id)}
+                      onCheckedChange={(on) => toggle(c.id, on)}
+                      label={
+                        <>
+                          {c.name}
+                          <span className="ml-2 text-xs text-muted-foreground">{KIND_LABELS[c.kind]}</span>
+                        </>
+                      }
+                    >
+                      <Money satang={c.kind === "card" ? null : c.amount} className="text-sm text-muted-foreground" />
+                    </CheckboxField>
                   </li>
                 ))}
               </ul>

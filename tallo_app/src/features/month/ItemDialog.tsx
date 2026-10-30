@@ -1,18 +1,17 @@
 import { useActionState, useState } from "react"
 
-import { Field, FormError, MoneyInput } from "@/components/bits"
+import { CheckboxField, DatePicker, Field, FormError, MoneyInput } from "@/components/bits"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { errorMessage, must } from "@/lib/errors"
 import { CATEGORY_LABELS, KIND_LABELS } from "@/lib/labels"
 import { parseBaht } from "@/lib/money"
 import { supabase } from "@/lib/supabase"
 import type { DebtAccount, ExpenseCategory, Item, ItemKind } from "@/lib/types"
-import { cn } from "@/lib/utils"
 
 const NEW_ACCOUNT = "__new__"
 
@@ -112,23 +111,22 @@ export function ItemDialog({
         </DialogHeader>
         <form action={formAction} className="grid gap-4">
           {!item && isDebt && available.length > 0 && (
-            <div className="grid gap-1.5 text-sm">
+            <div className="grid gap-2 text-sm">
               <span className="font-medium">เลือก{KIND_LABELS[kind]}ที่เคยใช้ หรือเพิ่มใบใหม่</span>
-              <div className="flex flex-wrap gap-2">
-                {[...available.map((a) => ({ id: a.id, name: a.name })), { id: NEW_ACCOUNT, name: "+ ใบใหม่" }].map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => setAccountId(a.id)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5",
-                      accountId === a.id ? "border-transparent bg-primary text-primary-foreground" : "hover:bg-muted",
-                    )}
-                  >
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                value={accountId}
+                onValueChange={(v) => v && setAccountId(v)}
+                className="flex-wrap justify-start"
+              >
+                {available.map((a) => (
+                  <ToggleGroupItem key={a.id} value={a.id}>
                     {a.name}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+                <ToggleGroupItem value={NEW_ACCOUNT}>+ ใบใหม่</ToggleGroupItem>
+              </ToggleGroup>
             </div>
           )}
 
@@ -152,9 +150,9 @@ export function ItemDialog({
           </Field>
 
           {kind === "expense" && (
-            <Field label="หมวด">
+            <Field label="หมวด" controlId="item-category">
               <Select value={category} onValueChange={(v) => setCategory(v as ExpenseCategory)}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="item-category" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -170,15 +168,16 @@ export function ItemDialog({
 
           {kind !== "income" && (
             <Field label="วันครบกำหนด">
-              <Input name="due_date" type="date" defaultValue={item?.due_date ?? ""} />
+              <DatePicker name="due_date" defaultValue={item?.due_date} />
             </Field>
           )}
 
           {(kind === "expense" || kind === "income") && (
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={recurring} onCheckedChange={(v) => setRecurring(v === true)} />
-              รายการประจำ (คัดลอกยอดไปเดือนหน้า)
-            </label>
+            <CheckboxField
+              label="รายการประจำ (คัดลอกยอดไปเดือนหน้า)"
+              checked={recurring}
+              onCheckedChange={setRecurring}
+            />
           )}
 
           <Field label="โน้ต">

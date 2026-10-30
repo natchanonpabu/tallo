@@ -28,6 +28,13 @@
 - ใช้ HTML validation (`required`, `min`, `step`, `inputMode="decimal"`) และเขียนตรวจเพิ่มเองในฟังก์ชัน action
 - รวม input ยอดเงินไว้ใน component เดียว คือ `MoneyInput`: รับค่าเป็นบาท แล้วแปลงเป็น **สตางค์ (integer)** ก่อนส่งต่อ
 - ห้ามใช้ float คำนวณเงินเด็ดขาด
+- ใช้ component ของ shadcn ทุกช่อง ไม่ใช้ `<select>`, `<input type="date">` หรือ `<label>` เปล่า ๆ ตัวช่วยอยู่ใน `src/components/bits.tsx`:
+  - `Field`: label + ช่อง + คำอธิบาย (shadcn `field`) ถ้าช่องเป็น `Select` ให้ใส่ `controlId` แล้วใส่ id เดียวกันที่ `SelectTrigger`
+  - `CheckboxField`: checkbox พร้อม label
+  - `DatePicker`: `Popover` + `Calendar` ภาษาไทย ส่งค่าในฟอร์มเป็น `yyyy-MM-dd`
+  - `MoneyInput`: ช่องยอดเงิน
+  - `FormError`: `Alert` แบบ destructive
+  - ปุ่มเลือกแบบกลุ่ม (เช่น เลือกบัตร, เลือกสี) ใช้ `ToggleGroup`
 
 ## ทิศทางหน้าตา: น่ารัก, pastel, มน
 

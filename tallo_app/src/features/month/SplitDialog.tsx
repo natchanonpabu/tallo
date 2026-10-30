@@ -1,8 +1,7 @@
 import { useActionState, useMemo, useState } from "react"
 
-import { ContactChip, FormError, Money, MoneyInput } from "@/components/bits"
+import { CheckboxField, ContactChip, FormError, Money, MoneyInput } from "@/components/bits"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -167,10 +166,13 @@ export function SplitDialog({
               {active.map((c) => {
                 const on = people.includes(c.id)
                 return (
-                  <li key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-                    <Checkbox checked={on} onCheckedChange={(v) => toggle(c.id, v === true)} />
-                    <ContactChip name={c.name} color={c.color} />
-                    <span className="flex-1" />
+                  <li key={c.id}>
+                    <CheckboxField
+                      className="min-h-9 rounded-xl px-2 py-1"
+                      checked={on}
+                      onCheckedChange={(v) => toggle(c.id, v)}
+                      label={<ContactChip name={c.name} color={c.color} />}
+                    >
                     {on && mode === "ratio" && (
                       <Input
                         type="number"
@@ -193,6 +195,7 @@ export function SplitDialog({
                     {on && shares && mode !== "fixed" && (
                       <Money satang={shares[c.id]} className="w-24 text-right text-sm" />
                     )}
+                    </CheckboxField>
                   </li>
                 )
               })}
@@ -200,9 +203,7 @@ export function SplitDialog({
           )}
 
           {mode !== "fixed" && (
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={includeMe} onCheckedChange={(v) => setIncludeMe(v === true)} />
-              นับเราเป็น 1 ส่วนด้วย
+            <CheckboxField label="นับเราเป็น 1 ส่วนด้วย" checked={includeMe} onCheckedChange={setIncludeMe}>
               {mode === "ratio" && includeMe && (
                 <Input
                   type="number"
@@ -210,11 +211,11 @@ export function SplitDialog({
                   step="any"
                   value={myWeight}
                   onChange={(e) => setMyWeight(Number(e.target.value))}
-                  className="ml-auto w-20 text-right"
+                  className="w-20 text-right"
                   aria-label="สัดส่วนของเรา"
                 />
               )}
-            </label>
+            </CheckboxField>
           )}
 
           {mine != null && (
@@ -225,10 +226,11 @@ export function SplitDialog({
           )}
 
           {itemLevel && (
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={recurring} onCheckedChange={(v) => setRecurring(v === true)} />
-              แบ่งแบบนี้ทุกเดือน (คัดลอกไปเดือนหน้า)
-            </label>
+            <CheckboxField
+              label="แบ่งแบบนี้ทุกเดือน (คัดลอกไปเดือนหน้า)"
+              checked={recurring}
+              onCheckedChange={setRecurring}
+            />
           )}
 
           <FormError message={state.error} />
