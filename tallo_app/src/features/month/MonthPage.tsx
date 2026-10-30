@@ -47,7 +47,7 @@ import { errorMessage, must } from "@/lib/errors"
 import { monthLabel } from "@/lib/labels"
 import { formatBaht } from "@/lib/money"
 import { supabase } from "@/lib/supabase"
-import type { Item, ItemKind, SubItem } from "@/lib/types"
+import type { Item, ItemKind, Offset, SubItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const SECTIONS: { kind: ItemKind; title: string }[] = [
@@ -61,7 +61,7 @@ type DialogState =
   | { type: "item"; kind: ItemKind; item?: Item }
   | { type: "sub"; item: Item; sub?: SubItem }
   | { type: "split"; targets: SplitTarget[] }
-  | { type: "offset"; contactId?: string }
+  | { type: "offset"; contactId?: string; offset?: Offset }
   | { type: "confirm"; title: string; description: string; action: () => Promise<void> }
   | null
 
@@ -154,6 +154,7 @@ export function MonthPage() {
         "อัปเดตยอดแล้ว",
       ),
     onAddOffset: (contactId) => setDialog({ type: "offset", contactId }),
+    onEditOffset: (offset) => setDialog({ type: "offset", offset }),
     onDeleteOffset: (offset) => void run(() => supabase.from("offsets").delete().eq("id", offset.id), "ลบแล้ว"),
     onSend: (contact) =>
       void run(
@@ -443,6 +444,7 @@ export function MonthPage() {
           monthId={month.id}
           contacts={data.contacts}
           contactId={dialog.contactId}
+          offset={dialog.offset}
           onSaved={reload}
         />
       )}

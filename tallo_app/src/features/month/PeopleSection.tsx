@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, PaperPlaneTilt, Plus, Trash, Warning } from "@phosphor-icons/react"
+import { CheckCircle, Circle, PaperPlaneTilt, PencilSimple, Plus, Trash, Warning } from "@phosphor-icons/react"
 
 import { ContactChip, EmptyState, Money } from "@/components/bits"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ export type PeopleActions = {
   onUnsettle: (settlement: Settlement) => void
   onResettle: (settlement: Settlement, net: number) => void
   onAddOffset: (contactId?: string) => void
+  onEditOffset: (offset: Offset) => void
   onDeleteOffset: (offset: Offset) => void
   onSend: (contact: Contact) => void
   onConfirmReceived: (request: PaymentRequest) => void
@@ -123,6 +124,16 @@ export function PeopleSection({
                       <span className="truncate text-muted-foreground">หักกลบ: {o.name}</span>
                       <span className="flex items-center gap-1">
                         <Money satang={-o.amount} className="text-destructive" />
+                        {!locked && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`แก้ไข ${o.name}`}
+                            onClick={() => actions.onEditOffset(o)}
+                          >
+                            <PencilSimple weight="light" />
+                          </Button>
+                        )}
                         {!locked && (
                           <Button
                             variant="ghost"
