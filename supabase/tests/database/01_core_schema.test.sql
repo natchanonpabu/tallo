@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(27);
 
 -- Fixtures (as postgres) --------------------------------------------------------
 
@@ -63,29 +63,48 @@ insert into public.contacts (name) values ('P''Ball');
 select throws_ok(
   $$ update public.contacts set linked_user_id = '22222222-2222-2222-2222-222222222222' $$,
   '42501', null, 'linked_user_id cannot be set directly');
-select throws_ok(
-  $$ select public.link_contact((select id from public.contacts), 'FRONG234') $$,
-  '22023', 'cannot_link_self', 'cannot link a contact to yourself');
-select throws_ok(
-  $$ select public.link_contact((select id from public.contacts), 'NOPE2345') $$,
-  'P0002', 'friend_code_not_found', 'unknown friend code is rejected');
-select is((select (public.link_contact((select id from public.contacts), 'ball2345')).linked_user_id),
-          '22222222-2222-2222-2222-222222222222'::uuid, 'link_contact links by friend code (case-insensitive)');
-select is((select count(*) from public.public_profiles), 2::bigint,
-          'Frong sees Ball''s public profile after linking');
+
+-- Linking with a code per contact: Frong gets P'Ball's invite code and sends it to Ball.
+create temp table invite as select public.contact_invite_code((select id from public.contacts)) as code;
+select matches((select code from invite), '^[A-HJ-NP-Z2-9]{8}$', 'invite code uses the look-alike-free alphabet');
+select is(public.contact_invite_code((select id from public.contacts)), (select code from invite),
+          'the same contact keeps the same code');
+select throws_ok($$ select public.accept_contact_invite((select code from invite)) $$,
+                 '22023', 'cannot_link_self', 'cannot accept your own invite');
 
 -- As Ball ----------------------------------------------------------------------
 
 set local request.jwt.claims to '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
 
+select throws_ok($$ select public.accept_contact_invite('NOPE2345') $$,
+                 'P0002', 'invite_not_found', 'unknown invite code is rejected');
+select results_eq(
+  $$ select name, linked_user_id from public.accept_contact_invite((select lower(code) from invite)) $$,
+  $$ values ('Frong', '11111111-1111-1111-1111-111111111111'::uuid) $$,
+  'accepting (case-insensitive) creates a linked contact for the inviter on Ball''s side');
+select throws_ok($$ select public.accept_contact_invite((select code from invite)) $$,
+                 'P0002', 'invite_not_found', 'an invite code works only once');
+
 select is((select count(*) from public.months), 0::bigint, 'Ball cannot see Frong''s months');
 select is((select count(*) from public.profiles), 1::bigint, 'Ball only reads his own profile row');
 select is((select count(*) from public.public_profiles), 2::bigint,
-          'Ball sees Frong''s public profile because Frong linked him');
+          'Ball sees Frong''s public profile once they are linked');
 select throws_ok(
   $$ insert into public.items (month_id, kind, name, amount)
      values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'income', 'Sneaky', 100) $$,
   '42501', null, 'Ball cannot add items to Frong''s month');
+
+-- Back as Frong ---------------------------------------------------------------
+
+set local request.jwt.claims to '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}';
+
+select results_eq($$ select linked_user_id, invite_code from public.contacts $$,
+                  $$ values ('22222222-2222-2222-2222-222222222222'::uuid, null::text) $$,
+                  'Frong''s contact is linked to Ball and the code is used up');
+select throws_ok($$ select public.contact_invite_code((select id from public.contacts)) $$,
+                 '22023', 'contact_already_linked', 'a linked contact has no invite code');
+select is((select (public.unlink_contact((select id from public.contacts))).linked_user_id), null::uuid,
+          'unlink_contact removes the link');
 
 -- Closed month -----------------------------------------------------------------
 

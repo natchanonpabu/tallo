@@ -34,6 +34,8 @@ function describe(n: Notification, actor: string): string {
       return `${actor} ยืนยันว่าได้รับเงินแล้ว`
     case "request_cancelled":
       return `${actor} ยกเลิกยอดเรียกเก็บ`
+    case "contact_linked":
+      return `${actor} ผูกบัญชีกับเราแล้ว`
     case "due_soon":
       return d.days_left === 0
         ? `${d.name} ครบกำหนดวันนี้`
@@ -97,6 +99,8 @@ export function NotificationBell() {
   async function open(n: Notification) {
     if (n.request_id) {
       navigate("/requests")
+    } else if (n.type === "contact_linked") {
+      navigate("/people")
     } else if (n.item_id) {
       const { data } = await supabase.from("items").select("month_id").eq("id", n.item_id).single()
       navigate(data ? `/months/${data.month_id}` : "/months")

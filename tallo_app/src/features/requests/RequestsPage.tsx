@@ -39,7 +39,11 @@ async function loadRequests(): Promise<Loaded> {
   return { requests, lines, events, names }
 }
 
-const ACTIVE = ["sent", "questioned", "accepted"]
+/** total is from the sender's side: + the recipient owes the sender, − the sender owes the recipient. */
+function direction(total: number, incoming: boolean, other: string): string {
+  if (incoming) return total >= 0 ? `คุณต้องจ่าย ${other}` : `${other} จะจ่ายให้คุณ`
+  return total >= 0 ? `${other} ต้องจ่ายเรา` : `เราจะจ่ายให้ ${other}`
+}
 const ALL_LINES = "all"
 
 export function RequestsPage() {
@@ -76,7 +80,7 @@ export function RequestsPage() {
       <h1 className="text-2xl font-bold">ยอดเรียกเก็บ</h1>
       <Tabs value={tab} onValueChange={(v) => setTab(v as "in" | "out")}>
         <TabsList className="w-full">
-          <TabsTrigger value="in">ที่ต้องจ่าย</TabsTrigger>
+          <TabsTrigger value="in">ได้รับ</TabsTrigger>
           <TabsTrigger value="out">ที่ส่งไป</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -85,7 +89,7 @@ export function RequestsPage() {
         <Skeleton className="h-40 rounded-3xl" />
       ) : list.length === 0 ? (
         <EmptyState>
-          {tab === "in" ? "ยังไม่มีใครส่งยอดมา" : "ยังไม่ได้ส่งยอดให้ใคร ส่งได้จากส่วน \"คน\" ในหน้าเดือน"}
+          {tab === "in" ? "ยังไม่มีใครส่งยอดมาให้ดู" : "ยังไม่ได้ส่งยอดให้ใคร ส่งได้จากส่วน \"คน\" ในหน้าเดือน"}
         </EmptyState>
       ) : (
         <ul className="grid gap-3">
@@ -102,7 +106,8 @@ export function RequestsPage() {
                       {incoming ? `จาก ${other}` : `ถึง ${other}`} · {monthLabel(r.year, r.month)}
                       {r.version > 1 && ` · แก้ครั้งที่ ${r.version - 1}`}
                     </p>
-                    <Money satang={r.total} className="text-3xl font-bold" />
+                    <p className="mt-1 text-sm font-medium">{direction(r.total, incoming, other)}</p>
+                    <Money satang={Math.abs(r.total)} className="text-3xl font-bold" />
                   </div>
                   <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", REQUEST_STATUS_CLASSES[r.status])}>
                     {REQUEST_STATUS_LABELS[r.status]}
@@ -113,7 +118,7 @@ export function RequestsPage() {
                   {lines.map((l) => (
                     <li key={l.id} className="flex justify-between gap-2">
                       <span className="truncate text-muted-foreground">
-                        {l.kind === "offset" && "หักกลบ: "}
+                        {l.kind === "offset" && (incoming ? `หักกลบ (${other} ติดคุณ): ` : "หักกลบ: ")}
                         {l.group_label && `${l.group_label} › `}
                         {l.label}
                       </span>
@@ -140,59 +145,21 @@ export function RequestsPage() {
                   </ul>
                 )}
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {incoming && ["sent", "questioned"].includes(r.status) && (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void act(
-                          () => supabase.rpc("accept_request", { p_request_id: r.id }),
-                          "ยืนยันแล้ว ยอดนี้ถูกเพิ่มเป็นรายจ่ายในเดือนของเรา",
-                        )
-                      }
-                    >
-                      ยืนยันยอด
-                    </Button>
-                  )}
-                  {incoming && r.status === "accepted" && (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void act(() => supabase.rpc("mark_request_paid", { p_request_id: r.id }), "บันทึกว่าจ่ายแล้ว")
-                      }
-                    >
-                      จ่ายแล้ว
-                    </Button>
-                  )}
-                  {!incoming && r.status === "paid" && (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        void act(
-                          () => supabase.rpc("confirm_request_received", { p_request_id: r.id }),
-                          "บันทึกว่าได้รับเงินแล้ว",
-                        )
-                      }
-                    >
-                      ได้รับเงินแล้ว
-                    </Button>
-                  )}
-                  {!incoming && ACTIVE.includes(r.status) && (
+                {!incoming && (
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() =>
-                        void act(() => supabase.rpc("cancel_request", { p_request_id: r.id }), "ยกเลิกแล้ว")
+                        void act(() => supabase.rpc("cancel_request", { p_request_id: r.id }), "ยกเลิกการส่งแล้ว")
                       }
                     >
-                      ยกเลิก
+                      ยกเลิกการส่ง
                     </Button>
-                  )}
-                </div>
-
-                {r.status !== "received" && (
-                  <CommentForm requestId={r.id} lines={lines} canAsk={incoming} onSent={reload} />
+                  </div>
                 )}
+
+                <CommentForm requestId={r.id} lines={lines} canAsk={incoming} onSent={reload} />
               </li>
             )
           })}

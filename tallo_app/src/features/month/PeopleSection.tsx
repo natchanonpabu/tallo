@@ -15,7 +15,6 @@ export type PeopleActions = {
   onEditOffset: (offset: Offset) => void
   onDeleteOffset: (offset: Offset) => void
   onSend: (contact: Contact) => void
-  onConfirmReceived: (request: PaymentRequest) => void
   onCancelRequest: (request: PaymentRequest) => void
 }
 
@@ -61,13 +60,8 @@ export function PeopleSection({
             const settlement = data.settlements.find((s) => s.contact_id === contact.id)
             const settledChanged = settlement && settlement.amount !== net
             const changed =
-              request && ["sent", "questioned", "accepted"].includes(request.status) && request.total !== net
-            const canSend =
-              !locked &&
-              !settlement &&
-              !!contact.linked_user_id &&
-              net > 0 &&
-              (!request || ["sent", "questioned", "accepted"].includes(request.status))
+              request && request.total !== net
+            const canSend = !locked && !!contact.linked_user_id && net !== 0
 
             return (
               <li key={contact.id} className="rounded-3xl bg-card p-4 shadow-sm">
@@ -174,14 +168,9 @@ export function PeopleSection({
                       {request ? "ส่งยอดใหม่" : "ส่งยอดให้ดูในแอป"}
                     </Button>
                   )}
-                  {request?.status === "paid" && (
-                    <Button size="sm" onClick={() => actions.onConfirmReceived(request)}>
-                      ได้รับเงินแล้ว
-                    </Button>
-                  )}
-                  {request && ["sent", "questioned", "accepted"].includes(request.status) && (
+                  {request && !locked && (
                     <Button size="sm" variant="ghost" onClick={() => actions.onCancelRequest(request)}>
-                      ยกเลิกยอด
+                      ยกเลิกการส่ง
                     </Button>
                   )}
                   {!locked && (

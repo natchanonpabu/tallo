@@ -7,14 +7,14 @@ export type Database = {
           Tables: {
             "contacts": {
                   Row: {
-                    "archived_at": string | null,"color": string,"created_at": string,"id": string,"linked_user_id": string | null,"name": string,"owner_id": string
+                    "archived_at": string | null,"color": string,"created_at": string,"id": string,"invite_code": string | null,"linked_user_id": string | null,"name": string,"owner_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "archived_at"?: string | null,"color"?: string,"created_at"?: string,"id"?: string,"linked_user_id"?: string | null,"name": string,"owner_id"?: string
+                    "archived_at"?: string | null,"color"?: string,"created_at"?: string,"id"?: string,"invite_code"?: string | null,"linked_user_id"?: string | null,"name": string,"owner_id"?: string
                   }
                   Update: {
-                    "archived_at"?: string | null,"color"?: string,"created_at"?: string,"id"?: string,"linked_user_id"?: string | null,"name"?: string,"owner_id"?: string
+                    "archived_at"?: string | null,"color"?: string,"created_at"?: string,"id"?: string,"invite_code"?: string | null,"linked_user_id"?: string | null,"name"?: string,"owner_id"?: string
                   }
                   Relationships: [
                     {
@@ -617,28 +617,20 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "accept_request":
-{ Args: { "p_request_id": string }; Returns: {
-              "accepted_at": string | null,
+            "accept_contact_invite":
+{ Args: { "p_code": string,"p_my_contact_id"?: string }; Returns: {
+              "archived_at": string | null,
+"color": string,
 "created_at": string,
 "id": string,
-"month": number,
-"paid_at": string | null,
-"received_at": string | null,
-"recipient_id": string,
-"recipient_item_id": string | null,
-"sender_contact_id": string,
-"sender_id": string,
-"sender_month_id": string,
-"sent_at": string | null,
-"status": Database["public"]['Enums']["request_status"],
-"total": number,
-"version": number,
-"year": number
+"invite_code": string | null,
+"linked_user_id": string | null,
+"name": string,
+"owner_id": string
             }
                           SetofOptions: {
         from: "*"
-        to: "payment_requests"
+        to: "contacts"
         isOneToOne: true
         isSetofReturn: false
       } },
@@ -708,31 +700,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
-"confirm_request_received":
-{ Args: { "p_request_id": string }; Returns: {
-              "accepted_at": string | null,
-"created_at": string,
-"id": string,
-"month": number,
-"paid_at": string | null,
-"received_at": string | null,
-"recipient_id": string,
-"recipient_item_id": string | null,
-"sender_contact_id": string,
-"sender_id": string,
-"sender_month_id": string,
-"sent_at": string | null,
-"status": Database["public"]['Enums']["request_status"],
-"total": number,
-"version": number,
-"year": number
-            }
-                          SetofOptions: {
-        from: "*"
-        to: "payment_requests"
-        isOneToOne: true
-        isSetofReturn: false
-      } },
+"contact_invite_code":
+{ Args: { "p_contact_id": string }; Returns: string
+                           },
 "create_due_notifications":
 { Args: { "p_today"?: string }; Returns: number
                            },
@@ -755,49 +725,11 @@ isOneToOne: false
 "generate_friend_code":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
-"link_contact":
-{ Args: { "p_contact_id": string,"p_friend_code": string }; Returns: {
-              "archived_at": string | null,
-"color": string,
-"created_at": string,
-"id": string,
-"linked_user_id": string | null,
-"name": string,
-"owner_id": string
-            }
-                          SetofOptions: {
-        from: "*"
-        to: "contacts"
-        isOneToOne: true
-        isSetofReturn: false
-      } },
+"generate_invite_code":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
 "lock_request":
 { Args: { "p_allowed": (Database["public"]['Enums']["request_status"])[],"p_request_id": string,"p_role": string }; Returns: {
-              "accepted_at": string | null,
-"created_at": string,
-"id": string,
-"month": number,
-"paid_at": string | null,
-"received_at": string | null,
-"recipient_id": string,
-"recipient_item_id": string | null,
-"sender_contact_id": string,
-"sender_id": string,
-"sender_month_id": string,
-"sent_at": string | null,
-"status": Database["public"]['Enums']["request_status"],
-"total": number,
-"version": number,
-"year": number
-            }
-                          SetofOptions: {
-        from: "*"
-        to: "payment_requests"
-        isOneToOne: true
-        isSetofReturn: false
-      } },
-"mark_request_paid":
-{ Args: { "p_paid_amount"?: number,"p_request_id": string }; Returns: {
               "accepted_at": string | null,
 "created_at": string,
 "id": string,
@@ -829,31 +761,6 @@ isOneToOne: false
 "month_is_closed":
 { Args: { "p_month_id": string }; Returns: boolean
                            },
-"month_open_requests":
-{ Args: { "p_month_id": string }; Returns: {
-              "accepted_at": string | null,
-"created_at": string,
-"id": string,
-"month": number,
-"paid_at": string | null,
-"received_at": string | null,
-"recipient_id": string,
-"recipient_item_id": string | null,
-"sender_contact_id": string,
-"sender_id": string,
-"sender_month_id": string,
-"sent_at": string | null,
-"status": Database["public"]['Enums']["request_status"],
-"total": number,
-"version": number,
-"year": number
-            }[]
-                          SetofOptions: {
-        from: "*"
-        to: "payment_requests"
-        isOneToOne: false
-        isSetofReturn: true
-      } },
 "notify":
 { Args: { "p_actor_id": string,"p_data"?: Json,"p_item_id": string,"p_request_id": string,"p_type": string,"p_user_id": string }; Returns: undefined
                            },
@@ -922,7 +829,24 @@ isOneToOne: false
       } },
 "split_target":
 { Args: { "p_rule": Omit<Database["public"]['Tables']["split_rules"]['Row'], Database["public"]['Tables']["split_rules"]['ComputedFields']> }; Returns: number
-                           }
+                           },
+"unlink_contact":
+{ Args: { "p_contact_id": string }; Returns: {
+              "archived_at": string | null,
+"color": string,
+"created_at": string,
+"id": string,
+"invite_code": string | null,
+"linked_user_id": string | null,
+"name": string,
+"owner_id": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "contacts"
+        isOneToOne: true
+        isSetofReturn: false
+      } }
           }
           Enums: {
             "expense_cat": "spending"|"subscription"|"savings"|"pay_person","item_kind": "card"|"loan"|"expense"|"income","item_status": "pending"|"done","month_status": "draft"|"active"|"closed","request_status": "draft"|"sent"|"questioned"|"accepted"|"paid"|"received"|"cancelled","split_mode": "equal"|"ratio"|"fixed"

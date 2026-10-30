@@ -161,34 +161,31 @@ export function MonthPage() {
         () => supabase.rpc("send_request", { p_month_id: month.id, p_contact_id: contact.id }),
         `ส่งยอดให้ ${contact.name} แล้ว`,
       ),
-    onConfirmReceived: (request) =>
-      void run(() => supabase.rpc("confirm_request_received", { p_request_id: request.id }), "บันทึกว่าได้รับเงินแล้ว"),
     onCancelRequest: (request) =>
       setDialog({
         type: "confirm",
-        title: "ยกเลิกยอดนี้?",
-        description: "อีกฝ่ายจะได้รับแจ้งเตือน และรายจ่ายที่สร้างไว้ฝั่งเขาจะถูกลบ",
-        action: () => run(() => supabase.rpc("cancel_request", { p_request_id: request.id }), "ยกเลิกแล้ว"),
+        title: "ยกเลิกการส่งยอดนี้?",
+        description: "อีกฝ่ายจะไม่เห็นยอดนี้แล้ว และได้รับแจ้งเตือนว่ายกเลิก",
+        action: () => run(() => supabase.rpc("cancel_request", { p_request_id: request.id }), "ยกเลิกการส่งแล้ว"),
       }),
   }
 
   async function closeMonth() {
-    try {
-      const open = must(await supabase.rpc("month_open_requests", { p_month_id: month.id }))
-      const doClose = () =>
-        run(() => supabase.rpc("set_month_status", { p_month_id: month.id, p_status: "closed" }), "ปิดเดือนแล้ว")
-      if (open.length > 0) {
-        setDialog({
-          type: "confirm",
-          title: "ยังมียอดเรียกเก็บที่ไม่เสร็จ",
-          description: `มี ${open.length} ยอดที่ยังไม่ได้รับเงิน ปิดเดือนแล้วยังกดจ่ายแล้ว/ได้รับแล้วต่อได้ แต่ยอดจะไม่ยกไปเดือนหน้า ปิดเลยไหม?`,
-          action: doClose,
-        })
-      } else {
-        await doClose()
-      }
-    } catch (err) {
-      toast.error(errorMessage(err))
+    const doClose = () =>
+      run(() => supabase.rpc("set_month_status", { p_month_id: month.id, p_status: "closed" }), "ปิดเดือนแล้ว")
+    const unsettled = data!.balances.filter(
+      (b) => (b.net ?? 0) !== 0 && !data!.settlements.some((s) => s.contact_id === b.contact_id),
+    )
+    if (unsettled.length > 0) {
+      const names = unsettled.map((b) => derived!.contactById.get(b.contact_id ?? "")?.name).join(", ")
+      setDialog({
+        type: "confirm",
+        title: "ยังมีคนที่ยังไม่ได้ติ๊กว่าเคลียร์แล้ว",
+        description: `${names} ยังไม่ได้ติ๊ก ปิดเดือนแล้วยังติ๊กต่อได้ แต่ยอดจะไม่ยกไปเดือนหน้า ปิดเลยไหม?`,
+        action: doClose,
+      })
+    } else {
+      await doClose()
     }
   }
 

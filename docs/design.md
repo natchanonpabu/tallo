@@ -404,6 +404,8 @@ where c.owner_id = m.owner_id
 
 ### 6.2 วงจรยอดเรียกเก็บ (business ข้อ 11)
 
+> **อัปเดต 2026-10-30**: ข้อ 6.2 (วงจรยอดเรียกเก็บแบบยืนยัน/จ่าย/ได้รับ) และ `link_contact` ถูกแทนด้วย Migration 8–9 ดูข้อ 8 และ business.md ข้อ 3, 11
+
 ```
             send_request                accept_request          mark_request_paid
   (none) ─────────────▶ sent ─────────────────────▶ accepted ───────────────────▶ paid
@@ -457,6 +459,8 @@ src/
 5. ✅ **Migration 5** (`20261029160000_due_reminders.sql`): `create_due_notifications` + pg_cron ทุกวัน 08:00 (Asia/Bangkok) ส่งแจ้งเตือน `due_soon` รายการละครั้งเดียว
 6. ✅ **Migration 6** (`20261029170000_single_amount.sql`): ตัดยอดเต็ม/ขั้นต่ำ/แผนการจ่ายของบัตร ใช้ `amount` อย่างเดียว
 7. ✅ **Migration 7** (`20261030090000_settlements.sql`): ตาราง `settlements` (1 แถวต่อคนต่อเดือน, `amount` มีเครื่องหมายแบบเดียวกับ `net`) ให้ติ๊กว่าคนจ่ายแล้วโดยไม่ต้องส่งยอด `confirm_request_received` เขียนแถวนี้ด้วย และ `month_summaries` ใช้ settlements คำนวณ `balance_actual` กับความคืบหน้า (นับคนที่ `net ≠ 0` เป็นงาน 1 อย่าง)
-8. ✅ **Seed** (`supabase/seed.sql`): user ทดลอง `frong@tallo.local`, `ball@tallo.local`, `chompoo@tallo.local` (รหัส `password123`) + เดือนตุลาคม 2026 ของ Frong จากชีต1 ครบทุกรายการ คงเหลือ −4,686.48 ตรงกับชีต (4 รายการ Chompoo / 2 วางในบัตรที่ยอดรับได้ เพราะชีตไม่ได้บอกว่าบัตรใบไหน)
+8. ✅ **Migration 8** (`20261030120000_view_only_requests.sql`): ยอดเรียกเก็บเป็นแบบส่งให้ดูอย่างเดียว ส่งได้เมื่อ `net ≠ 0` (`total` มีเครื่องหมาย) ลบ `accept_request`, `mark_request_paid`, `confirm_request_received`, `month_open_requests` สถานะที่ใช้เหลือ `sent` / `questioned` / `cancelled`
+9. ✅ **Migration 9** (`20261030130000_contact_invites.sql`): ผูกบัญชีด้วยโค้ดต่อคน `contacts.invite_code` + `contact_invite_code`, `accept_contact_invite`, `unlink_contact` (แทน `link_contact` แบบ friend code; `profiles.friend_code` ไม่ได้ใช้แล้ว) แจ้งเตือน `contact_linked`
+10. ✅ **Seed** (`supabase/seed.sql`): user ทดลอง `frong@tallo.local`, `ball@tallo.local`, `chompoo@tallo.local` (รหัส `password123`) + เดือนตุลาคม 2026 ของ Frong จากชีต1 ครบทุกรายการ คงเหลือ −4,686.48 ตรงกับชีต (4 รายการ Chompoo / 2 วางในบัตรที่ยอดรับได้ เพราะชีตไม่ได้บอกว่าบัตรใบไหน)
 
 แต่ละ migration มีเทสต์ SQL (pgTAP ผ่าน `supabase test db`) ครอบคลุมการปัดเศษของการแบ่ง, RLS ข้าม user และ state machine ของยอดเรียกเก็บ
